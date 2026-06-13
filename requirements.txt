@@ -1,4 +1,4 @@
-# Yaad — Billing & Abuse Controls milestone
+# Yaad — Billing & Abuse Controls + Capture/OCR/Cards milestones
 fastapi>=0.110,<1.0
 uvicorn[standard]>=0.29
 httpx>=0.27
@@ -6,3 +6,8 @@ sqlalchemy>=2.0,<3.0
 redis>=5.0
 python-multipart>=0.0.9      # UploadFile / multipart form parsing
 psycopg[binary]>=3.1         # prod Postgres driver (sqlite used in dev by default)
+# Capture -> OCR -> cards pipeline (versions mirror /opt/invoicegraph)
+groq>=1.4                    # card generation (llama-3.3-70b-versatile, JSON mode); >=1.x for httpx 0.28 compat
+google-generativeai>=0.8     # OCR via Gemini vision (gemini-2.0-flash)
+Pillow==10.4.0               # image open/validate for OCR
+pytesseract==0.3.13          # local OCR fallback when Gemini is rate-limited (needs tesseract binary)

@@ -1,29 +1,39 @@
 """
-main.py — Yaad billing/abuse milestone, runnable FastAPI app.
+main.py — Yaad app: billing/abuse gate (M1) + capture->OCR->cards pipeline (M2).
 
 Mounts billing.router and wires the two `# APP:` placeholders to dev
-implementations (SQLite session + header-based user id). The /scan route is a
-DEV HARNESS that exercises ONLY the gate (rate-limit + quota + OCR-cache decision)
-— it performs NO OCR and generates NO cards (those are out of scope per CLAUDE.md);
-it exists so the Definition-of-Done checks (402 / 429 / re-scan-free) are testable.
+implementations (SQLite session + header-based user id).
+
+/capture is the real product route: it runs behind the M1 gate (rate-limit ->
+quota/402 -> dedup) and only spends OCR/LLM money on a page that has never been
+processed before (ExtractedPage + PageContent are global per-page caches).
+NOTE: /capture and /decks are NOT exposed by nginx (only /billing/* is public).
 """
 from __future__ import annotations
 
-from fastapi import Depends, FastAPI, Request, UploadFile, File
+import os
+import json
+
+from fastapi import Depends, FastAPI, Request, UploadFile, File, HTTPException, status
 from sqlalchemy.orm import Session
 
 import billing
 import db as db_module
+import ocr
+import cards
+from content_models import PageContent
 from auth_stub import current_user_id
 
-app = FastAPI(title="Yaad — Billing & Abuse Controls")
+app = FastAPI(title="Yaad — Billing + Capture/OCR/Cards")
 
-# Wire the `# APP:` placeholders without editing billing.py: override its
-# get_db()/current_user_id() deps with the dev implementations.
+# Wire billing.py's `# APP:` placeholders without editing it.
 app.dependency_overrides[billing.get_db] = db_module.get_db
 app.dependency_overrides[billing.current_user_id] = current_user_id
 
 app.include_router(billing.router)
+
+MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_MB", "8")) * 1024 * 1024
+ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
 
 @app.on_event("startup")
@@ -36,18 +46,139 @@ def health() -> dict:
     return {"ok": True}
 
 
-@app.post("/scan")
-async def scan(
+def _refund_scan(db: Session, user_id: int, content_hash: str, info: dict) -> None:
+    """Undo what register_scan charged, so a failed OCR doesn't cost a free sheet.
+    Only acts when the scan was new for this user (a re-scan charged nothing)."""
+    if not info.get("new_for_user"):
+        return
+    up = db.get(billing.UserPage, (user_id, content_hash))
+    if up is not None:
+        db.delete(up)
+    if not billing._sub(db, user_id).is_active():
+        usage = db.get(billing.SheetUsage, user_id)
+        if usage and usage.used > 0:
+            usage.used -= 1
+    db.commit()
+
+
+@app.post("/capture")
+async def capture(
     request: Request,
     file: UploadFile = File(...),
-    _rl: None = Depends(billing.scan_rate_limit),       # 429 on velocity abuse
+    _rl: None = Depends(billing.scan_rate_limit),     # 429 on velocity abuse
     db: Session = Depends(db_module.get_db),
     user_id: int = Depends(current_user_id),
 ) -> dict:
-    """DEV HARNESS gate only — no OCR, no cards. Mirrors the capture wiring in
-    billing.py: rate-limit -> hash -> register_scan (402 when free quota spent)."""
+    """Photo of a textbook page -> a deck of flashcards + quiz.
+
+    Flow: rate-limit -> validate -> hash -> register_scan (402 quota gate + dedup)
+    -> OCR (only if page not cached) -> card-gen (only if deck not cached)."""
+    # ---- validate upload (closes M1 TODO: enforce size/type on capture) ----
+    if file.content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail={"reason": "unsupported_type", "allowed": sorted(ALLOWED_IMAGE_TYPES)},
+        )
     data = await file.read()
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail={"reason": "file_too_large", "max_mb": MAX_UPLOAD_BYTES // (1024 * 1024)},
+        )
+    if not data:
+        raise HTTPException(status_code=400, detail={"reason": "empty_file"})
+
     content_hash = billing.compute_content_hash(data)
-    info = billing.register_scan(db, user_id, content_hash)  # raises 402 if quota spent
-    # Real capture route would run OCR here only when info["ocr_needed"], then gen cards.
-    return {"content_hash": content_hash, **info}
+
+    # 402 here if free quota is spent; no-ops quota for re-scans (dedup).
+    info = billing.register_scan(db, user_id, content_hash)
+
+    # ---- OCR (cached per unique page) ----
+    ep = db.get(billing.ExtractedPage, content_hash)
+    ocr_cached = ep is not None
+    if ep is None:
+        try:
+            text = await ocr.ocr_image(data, file.content_type)
+        except ocr.OCRError as e:
+            # All engines failed (e.g. Gemini quota + Tesseract error). The page
+            # was NOT cached and quota WAS consumed by register_scan — refund it
+            # so the user can retry without losing a free sheet.
+            _refund_scan(db, user_id, content_hash, info)
+            raise HTTPException(status_code=503, detail={"reason": "ocr_unavailable", "error": str(e)[:160]},
+                                headers={"Retry-After": "60"}) from e
+        db.merge(billing.ExtractedPage(content_hash=content_hash, extracted=text))
+        db.commit()
+    else:
+        text = ep.extracted or ""
+
+    # ---- cards (cached per unique page) ----
+    pc = db.get(PageContent, content_hash)
+    deck_cached = pc is not None
+    if pc is None:
+        try:
+            deck = await cards.generate_cards(text)
+        except Exception as e:
+            raise HTTPException(status_code=503, detail={"reason": "cards_unavailable", "error": str(e)[:160]},
+                                headers={"Retry-After": "60"}) from e
+        db.merge(PageContent(
+            content_hash=content_hash,
+            flashcards_json=json.dumps(deck["flashcards"]),
+            quiz_json=json.dumps(deck["quiz"]),
+            model_used=deck.get("model_used"),
+        ))
+        db.commit()
+        flashcards, quiz = deck["flashcards"], deck["quiz"]
+    else:
+        flashcards = json.loads(pc.flashcards_json)
+        quiz = json.loads(pc.quiz_json)
+
+    return {
+        "content_hash": content_hash,
+        "new_for_user": info["new_for_user"],
+        "ocr_cached": ocr_cached,     # True => no OCR $ spent this call
+        "deck_cached": deck_cached,   # True => no LLM $ spent this call
+        "flashcards": flashcards,
+        "quiz": quiz,
+    }
+
+
+@app.get("/decks")
+def list_decks(
+    db: Session = Depends(db_module.get_db),
+    user_id: int = Depends(current_user_id),
+) -> dict:
+    """Summaries of the decks for pages THIS user has scanned (UserPage ⋈ PageContent)."""
+    rows = (
+        db.query(billing.UserPage, PageContent)
+        .join(PageContent, PageContent.content_hash == billing.UserPage.content_hash)
+        .filter(billing.UserPage.user_id == user_id)
+        .all()
+    )
+    decks = [{
+        "content_hash": up.content_hash,
+        "scanned_at": up.created_at.isoformat() if up.created_at else None,
+        "flashcards": len(json.loads(pc.flashcards_json)),
+        "quiz": len(json.loads(pc.quiz_json)),
+    } for up, pc in rows]
+    return {"count": len(decks), "decks": decks}
+
+
+@app.get("/decks/{content_hash}")
+def get_deck(
+    content_hash: str,
+    db: Session = Depends(db_module.get_db),
+    user_id: int = Depends(current_user_id),
+) -> dict:
+    """Full deck for one page. 404 unless this user has scanned it (don't leak
+    other users' content by guessing a hash)."""
+    if db.get(billing.UserPage, (user_id, content_hash)) is None:
+        raise HTTPException(status_code=404, detail="Deck not found for this user")
+    pc = db.get(PageContent, content_hash)
+    if pc is None:
+        raise HTTPException(status_code=404, detail="Deck not generated yet")
+    return {
+        "content_hash": content_hash,
+        "flashcards": json.loads(pc.flashcards_json),
+        "quiz": json.loads(pc.quiz_json),
+        "model_used": pc.model_used,
+    }
