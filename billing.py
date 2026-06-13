@@ -299,16 +299,26 @@ async def paypro_ipn(request: Request, db: Session = Depends(get_db)) -> dict:
             return {"received": True, "order_number": order_number, "status": "unverified"}
         # Non-strict (bring-up only): fall back to the IPN-reported status.
 
-    if paid and order.status != "paid":
-        order.status = "paid"
-        order.paid_at = _now()
-        sub = _sub(db, order.user_id)
-        base = sub.current_period_end if (sub.current_period_end and sub.current_period_end > _now()) else _now()
-        sub.current_period_end = base + dt.timedelta(days=PLAN_PERIOD_DAYS)
-        sub.status = "active"
-        db.commit()
-    elif not paid and raw_status:
+    if paid:
+        activate_subscription_for_paid_order(db, order)
+    elif raw_status:
         order.status = "failed"
         db.commit()
 
     return {"received": True, "order_number": order_number, "status": order.status}
+
+
+def activate_subscription_for_paid_order(db: Session, order: "PaymentOrder") -> bool:
+    """Mark a confirmed-paid order as paid and extend the user's subscription by one
+    period. Idempotent (no-op if already paid). Single source of truth shared by the
+    IPN route and the reconcile timer. Returns True if it activated."""
+    if order.status == "paid":
+        return False
+    order.status = "paid"
+    order.paid_at = _now()
+    sub = _sub(db, order.user_id)
+    base = sub.current_period_end if (sub.current_period_end and sub.current_period_end > _now()) else _now()
+    sub.current_period_end = base + dt.timedelta(days=PLAN_PERIOD_DAYS)
+    sub.status = "active"
+    db.commit()
+    return True

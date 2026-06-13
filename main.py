@@ -22,8 +22,11 @@ import db as db_module
 import ocr
 import cards
 import auth
+import log_setup
 from content_models import PageContent
 from auth import current_user_id  # real JWT dependency (replaces auth_stub)
+
+log_setup.configure()  # surface app INFO logs under uvicorn/journald
 
 app = FastAPI(title="Yaad — Billing + Capture/OCR/Cards + Auth")
 

@@ -14,3 +14,5 @@ pytesseract==0.3.13          # local OCR fallback when Gemini is rate-limited (n
 # Passwordless auth (email OTP + JWT)
 PyJWT>=2.8                   # JWT access tokens (HS256)
 email-validator>=2           # pydantic EmailStr validation
+# Production hardening
+alembic>=1.13                # Postgres schema migrations (prod; create_all is sqlite-dev-only)

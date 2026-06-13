@@ -1,0 +1,24 @@
+# Yaad infrastructure — dedicated Postgres (per-app, like leadkar/invoicegraph).
+# Redis is still shared (invoicegraph-redis db 5) for now.
+# Bound to localhost only; never exposed publicly.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: yaad-postgres-1
+    environment:
+      POSTGRES_DB: yaad
+      POSTGRES_USER: yaad
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - yaad_pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5434:5432"   # 5432=invoicegraph; Yaad on 5434
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U yaad"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  yaad_pgdata:

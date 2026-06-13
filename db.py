@@ -24,7 +24,10 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False
 
 
 def create_all() -> None:
-    """Create tables for all models registered on billing.Base (dev only)."""
+    """Create tables for SQLite dev/tests only. On Postgres the schema is owned by
+    Alembic (`alembic upgrade head` at deploy) — no-op here to avoid drift."""
+    if not DATABASE_URL.startswith("sqlite"):
+        return
     import billing  # noqa: F401 — registers the billing ORM models on Base.metadata
     import content_models  # noqa: F401 — registers PageContent on the same Base
     import auth_models  # noqa: F401 — registers User on the same Base
