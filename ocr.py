@@ -28,6 +28,9 @@ log = logging.getLogger(__name__)
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 TESSERACT_CONFIG = "--psm 6"
 TESSERACT_LANG = os.getenv("TESSERACT_LANG", "eng")
+# Which engine to try first. Default "tesseract" (free, local) so we don't lean on
+# the shared free-tier Gemini key. Set OCR_PRIMARY=gemini once Yaad has its own key.
+OCR_PRIMARY = os.getenv("OCR_PRIMARY", "tesseract").lower()
 
 _OCR_PROMPT = (
     "You are an OCR engine. Transcribe ALL text from this image of a printed "
@@ -92,11 +95,15 @@ def _tesseract(img: Image.Image) -> str:
 
 def _ocr_sync(image_bytes: bytes) -> tuple[str, str]:
     img = _open(image_bytes)
-    try:
-        return _gemini(img), "gemini"
-    except _Transient as e:
-        log.warning("[ocr] Gemini unavailable (%s) -> Tesseract fallback", e)
-        return _tesseract(img), "tesseract"
+    order = ["gemini", "tesseract"] if OCR_PRIMARY == "gemini" else ["tesseract", "gemini"]
+    last: Exception | None = None
+    for engine in order:
+        try:
+            return (_gemini(img), "gemini") if engine == "gemini" else (_tesseract(img), "tesseract")
+        except (_Transient, OCRError) as e:
+            log.warning("[ocr] %s failed (%s) -> next engine", engine, e)
+            last = e
+    raise OCRError(f"all OCR engines failed: {last}")
 
 
 async def ocr_image(image_bytes: bytes, mime: str | None = None) -> str:
