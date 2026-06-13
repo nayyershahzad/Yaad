@@ -27,6 +27,7 @@ def create_all() -> None:
     """Create tables for all models registered on billing.Base (dev only)."""
     import billing  # noqa: F401 — registers the billing ORM models on Base.metadata
     import content_models  # noqa: F401 — registers PageContent on the same Base
+    import auth_models  # noqa: F401 — registers User on the same Base
     billing.Base.metadata.create_all(bind=engine)
 
 

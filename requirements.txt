@@ -11,3 +11,6 @@ groq>=1.4                    # card generation (llama-3.3-70b-versatile, JSON mo
 google-generativeai>=0.8     # OCR via Gemini vision (gemini-2.0-flash)
 Pillow==10.4.0               # image open/validate for OCR
 pytesseract==0.3.13          # local OCR fallback when Gemini is rate-limited (needs tesseract binary)
+# Passwordless auth (email OTP + JWT)
+PyJWT>=2.8                   # JWT access tokens (HS256)
+email-validator>=2           # pydantic EmailStr validation

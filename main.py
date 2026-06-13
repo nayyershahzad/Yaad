@@ -21,16 +21,18 @@ import billing
 import db as db_module
 import ocr
 import cards
+import auth
 from content_models import PageContent
-from auth_stub import current_user_id
+from auth import current_user_id  # real JWT dependency (replaces auth_stub)
 
-app = FastAPI(title="Yaad — Billing + Capture/OCR/Cards")
+app = FastAPI(title="Yaad — Billing + Capture/OCR/Cards + Auth")
 
-# Wire billing.py's `# APP:` placeholders without editing it.
+# Wire billing.py's `# APP:` placeholders to the real implementations.
 app.dependency_overrides[billing.get_db] = db_module.get_db
 app.dependency_overrides[billing.current_user_id] = current_user_id
 
 app.include_router(billing.router)
+app.include_router(auth.router)
 
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_MB", "8")) * 1024 * 1024
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
