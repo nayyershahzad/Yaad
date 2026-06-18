@@ -329,6 +329,32 @@ button.auto { width: auto; }
 .notes-pending { color: var(--muted); font-weight: 600; }
 .pages-row { cursor: pointer; }
 
+/* ---- loose (untagged) pages ---- */
+.loose-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  flex-wrap: wrap;
+}
+.loose-main { flex: 1; min-width: 0; cursor: pointer; }
+.loose-title {
+  font-weight: 700; font-size: 15px; color: var(--navy);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.loose-row .meta, .loose-file .meta { font-size: 13px; color: var(--muted); }
+.hash-dim { font-family: monospace; font-size: 12px; opacity: 0.6; }
+.loose-btns { display: flex; gap: 8px; flex-shrink: 0; }
+.icon-btn {
+  background: #eef1f8; color: var(--navy);
+  width: 40px; height: 40px; padding: 0;
+  font-size: 18px; border-radius: 10px;
+  transition: transform 0.1s;
+}
+.icon-btn:active { transform: scale(0.92); }
+.icon-btn.danger { background: #fbe9e8; }
+.icon-btn:disabled { opacity: 0.5; }
+.loose-file .loose-title { white-space: normal; margin-bottom: 10px; }
+.loose-actions { display: flex; gap: 10px; }
+.btn-primary.auto, .btn-ghost.auto { width: auto; flex: 1; }
+
 .seg.seg-3 button { font-size: 14px; padding: 11px 4px; }
 
 .banner.revision {

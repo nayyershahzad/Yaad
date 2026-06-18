@@ -1,28 +1,37 @@
-import React, { useEffect, useState } from "react";
-import { getDossiers, getRevisionSuggestion, listDecks } from "../api.js";
+import React, { useCallback, useEffect, useState } from "react";
+import { getDossiers, getRevisionSuggestion, listDecks, tagDeck, deleteDeck } from "../api.js";
 
 // The Library: dossier-organized view of everything the user has scanned.
 // Subject -> Chapters, each chapter a tappable card. Pages that were scanned
 // without a subject/chapter tag don't appear in /dossiers, so we also surface
-// an "Untagged pages" group from /decks for discoverability.
+// a "Loose pages" group from /decks so they can be filed or cleared.
 export default function Library({ onOpenChapter, onOpenPage, onUnauthorized }) {
   const [state, setState] = useState({ loading: true, subjects: [], error: "" });
   const [revision, setRevision] = useState(null);
-  const [taggedHashes, setTaggedHashes] = useState(null);
-  const [untagged, setUntagged] = useState([]);
+  const [decks, setDecks] = useState([]);
+
+  // Loads dossiers + decks together so a tag/delete can refresh both at once
+  // (a filed page leaves the loose group and appears under its new dossier).
+  const refresh = useCallback(async () => {
+    try {
+      const res = await getDossiers();
+      setState({ loading: false, subjects: res.subjects || [], error: "" });
+    } catch (err) {
+      if (err.status === 401) { onUnauthorized(); return; }
+      setState({ loading: false, subjects: [], error: "Couldn't load your library." });
+    }
+    try {
+      const r = await listDecks();
+      setDecks(r.decks || []);
+    } catch (err) {
+      if (err.status === 401) onUnauthorized();
+      /* otherwise non-fatal */
+    }
+  }, [onUnauthorized]);
 
   useEffect(() => {
     let alive = true;
-    (async () => {
-      try {
-        const res = await getDossiers();
-        if (alive) setState({ loading: false, subjects: res.subjects || [], error: "" });
-      } catch (err) {
-        if (err.status === 401) { onUnauthorized(); return; }
-        if (alive) setState({ loading: false, subjects: [], error: "Couldn't load your library." });
-      }
-    })();
-    // Revision suggestion (best-effort, null = hide).
+    refresh();
     (async () => {
       try {
         const r = await getRevisionSuggestion();
@@ -31,15 +40,8 @@ export default function Library({ onOpenChapter, onOpenPage, onUnauthorized }) {
         if (err.status === 401) onUnauthorized();
       }
     })();
-    // Untagged pages: anything in /decks not represented by a dossier page.
-    (async () => {
-      try {
-        const r = await listDecks();
-        if (alive) setUntagged(r.decks || []);
-      } catch { /* non-fatal */ }
-    })();
     return () => { alive = false; };
-  }, [onUnauthorized]);
+  }, [refresh, onUnauthorized]);
 
   if (state.loading) {
     return (
@@ -48,7 +50,9 @@ export default function Library({ onOpenChapter, onOpenPage, onUnauthorized }) {
   }
 
   const hasDossiers = state.subjects.length > 0;
-  const looseDecks = untagged; // shown as a fallback bucket below
+  // Loose pages = untagged decks (no subject AND no chapter). Tagged pages
+  // already show under their dossier, so excluding them avoids double-listing.
+  const loosePages = decks.filter((d) => !d.subject && !d.chapter);
 
   return (
     <div>
@@ -64,7 +68,7 @@ export default function Library({ onOpenChapter, onOpenPage, onUnauthorized }) {
         </div>
       )}
 
-      {!hasDossiers && looseDecks.length === 0 && (
+      {!hasDossiers && loosePages.length === 0 && (
         <div className="card center">
           <p className="muted">No pages yet. Scan a page to start your library.</p>
         </div>
@@ -100,27 +104,120 @@ export default function Library({ onOpenChapter, onOpenPage, onUnauthorized }) {
         </div>
       ))}
 
-      {looseDecks.length > 0 && (
+      {loosePages.length > 0 && (
         <div className="subject-group">
-          <div className="subject-head">🗂️ All scanned pages</div>
-          {looseDecks.map((d) => (
-            <div className="card deck-row" key={d.content_hash} onClick={() => onOpenPage(d.content_hash)} role="button">
-              <div>
-                <div>
-                  <span className="pill">{d.flashcards} cards</span>
-                  <span className="pill">{d.quiz} quiz</span>
-                </div>
-                <div className="meta" style={{ marginTop: 6 }}>
-                  {d.scanned_at ? new Date(d.scanned_at).toLocaleDateString() : "—"}
-                  {"  ·  "}
-                  <span style={{ fontFamily: "monospace" }}>{d.content_hash.slice(0, 10)}…</span>
-                </div>
-              </div>
-              <div style={{ fontSize: 22, color: "var(--navy)" }}>›</div>
-            </div>
+          <div className="subject-head">📄 Loose pages (tap File to organize)</div>
+          {loosePages.map((d) => (
+            <LoosePage
+              key={d.content_hash}
+              deck={d}
+              onOpen={() => onOpenPage(d.content_hash)}
+              onChanged={refresh}
+              onUnauthorized={onUnauthorized}
+            />
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// A single untagged page: opens on tap, with File-into-chapter + Remove actions.
+function LoosePage({ deck, onOpen, onChanged, onUnauthorized }) {
+  const [mode, setMode] = useState("view"); // view | file
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [form, setForm] = useState({ subject: "", chapter: "", page_no: "" });
+
+  async function fileIt(e) {
+    e.preventDefault();
+    if (!form.subject.trim() || !form.chapter.trim()) {
+      setErr("Subject and chapter are required.");
+      return;
+    }
+    setBusy(true);
+    setErr("");
+    try {
+      await tagDeck(deck.content_hash, {
+        subject: form.subject.trim(),
+        chapter: form.chapter.trim(),
+        page_no: form.page_no === "" ? undefined : Number(form.page_no),
+      });
+      await onChanged();
+    } catch (e2) {
+      if (e2.status === 401) { onUnauthorized(); return; }
+      setErr("Couldn't file this page. Try again.");
+      setBusy(false);
+    }
+  }
+
+  async function remove() {
+    if (!window.confirm("Remove this page from your library? This can't be undone.")) return;
+    setBusy(true);
+    setErr("");
+    try {
+      await deleteDeck(deck.content_hash);
+      await onChanged();
+    } catch (e2) {
+      if (e2.status === 401) { onUnauthorized(); return; }
+      setErr("Couldn't remove this page. Try again.");
+      setBusy(false);
+    }
+  }
+
+  const date = deck.scanned_at ? new Date(deck.scanned_at).toLocaleDateString() : "—";
+
+  if (mode === "file") {
+    return (
+      <div className="card loose-file">
+        <div className="loose-title">{deck.title}</div>
+        <form onSubmit={fileIt}>
+          <div className="tag-grid">
+            <div>
+              <label>Subject</label>
+              <input type="text" value={form.subject} disabled={busy}
+                onChange={(e) => setForm({ ...form, subject: e.target.value })} placeholder="e.g. Biology" />
+            </div>
+            <div>
+              <label>Chapter</label>
+              <input type="text" value={form.chapter} disabled={busy}
+                onChange={(e) => setForm({ ...form, chapter: e.target.value })} placeholder="e.g. Cell Division" />
+            </div>
+            <div>
+              <label>Page # (optional)</label>
+              <input type="text" inputMode="numeric" value={form.page_no} disabled={busy}
+                onChange={(e) => setForm({ ...form, page_no: e.target.value.replace(/[^0-9]/g, "") })} placeholder="e.g. 12" />
+            </div>
+          </div>
+          {err && <p className="error">{err}</p>}
+          <div className="loose-actions">
+            <button type="button" className="btn-ghost" disabled={busy} onClick={() => { setMode("view"); setErr(""); }}>Cancel</button>
+            <button type="submit" className="btn-primary auto" disabled={busy}>{busy ? "Filing…" : "📁 File"}</button>
+          </div>
+        </form>
+      </div>
+    );
+  }
+
+  return (
+    <div className="card loose-row">
+      <div className="loose-main" role="button" onClick={onOpen}>
+        <div className="loose-title">{deck.title}</div>
+        <div style={{ marginTop: 6 }}>
+          <span className="pill">{deck.flashcards} cards</span>
+          <span className="pill">{deck.quiz} quiz</span>
+        </div>
+        <div className="meta" style={{ marginTop: 6 }}>
+          {date}
+          {"  ·  "}
+          <span className="hash-dim">{deck.content_hash.slice(0, 8)}</span>
+        </div>
+      </div>
+      <div className="loose-btns">
+        <button className="icon-btn" title="File into chapter" disabled={busy} onClick={() => setMode("file")}>📁</button>
+        <button className="icon-btn danger" title="Remove" disabled={busy} onClick={remove}>🗑</button>
+      </div>
+      {err && <p className="error" style={{ flexBasis: "100%", margin: "8px 0 0" }}>{err}</p>}
     </div>
   );
 }

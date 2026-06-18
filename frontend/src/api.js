@@ -82,11 +82,26 @@ export function captureImage(file, { subject, chapter, page_no } = {}) {
 }
 
 // ---- decks ----
+// Returns {count, decks:[{content_hash, title, subject, chapter, page_no,
+// scanned_at, flashcards, quiz}]} — empty decks excluded server-side.
 export function listDecks() {
   return request("/decks");
 }
+// Alias kept for callers that expect getDecks().
+export const getDecks = listDecks;
 export function getDeck(hash) {
   return request(`/decks/${encodeURIComponent(hash)}`);
+}
+// File a loose page into a subject/chapter (any field optional).
+export function tagDeck(content_hash, { subject, chapter, page_no } = {}) {
+  return request(`/decks/${encodeURIComponent(content_hash)}/tag`, {
+    method: "POST",
+    body: { subject, chapter, page_no },
+  });
+}
+// Remove a page from the user's library.
+export function deleteDeck(content_hash) {
+  return request(`/decks/${encodeURIComponent(content_hash)}`, { method: "DELETE" });
 }
 
 // ---- dossiers ----

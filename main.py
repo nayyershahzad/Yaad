@@ -15,6 +15,7 @@ import os
 import json
 
 from fastapi import Depends, FastAPI, Request, UploadFile, File, Form, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 import billing
@@ -176,20 +177,78 @@ def list_decks(
     db: Session = Depends(db_module.get_db),
     user_id: int = Depends(current_user_id),
 ) -> dict:
-    """Summaries of the decks for pages THIS user has scanned (UserPage ⋈ PageContent)."""
+    """Summaries of the decks for pages THIS user has scanned (UserPage ⋈ PageContent).
+
+    Empty pages (no flashcards and no quiz — blank/failed scans) are excluded so
+    they don't clutter the library. Each deck carries a friendly `title` derived
+    from its content plus the user's subject/chapter/page_no tags (null if untagged)."""
     rows = (
         db.query(billing.UserPage, PageContent)
         .join(PageContent, PageContent.content_hash == billing.UserPage.content_hash)
         .filter(billing.UserPage.user_id == user_id)
         .all()
     )
-    decks = [{
-        "content_hash": up.content_hash,
-        "scanned_at": up.created_at.isoformat() if up.created_at else None,
-        "flashcards": len(json.loads(pc.flashcards_json)),
-        "quiz": len(json.loads(pc.quiz_json)),
-    } for up, pc in rows]
+    decks = []
+    for up, pc in rows:
+        fc = json.loads(pc.flashcards_json or "[]")
+        qz = json.loads(pc.quiz_json or "[]")
+        if not fc and not qz:
+            continue  # skip blank/failed scans — no study value
+        title = (fc[0].get("front") if fc else None) or (qz[0].get("question") if qz else None) or "Untitled page"
+        decks.append({
+            "content_hash": up.content_hash,
+            "title": title,
+            "subject": up.subject,
+            "chapter": up.chapter,
+            "page_no": up.page_no,
+            "scanned_at": up.created_at.isoformat() if up.created_at else None,
+            "flashcards": len(fc),
+            "quiz": len(qz),
+        })
     return {"count": len(decks), "decks": decks}
+
+
+class TagIn(BaseModel):
+    subject: str | None = None
+    chapter: str | None = None
+    page_no: int | None = None
+
+
+@app.post("/decks/{content_hash}/tag")
+def tag_deck(
+    content_hash: str,
+    body: TagIn,
+    db: Session = Depends(db_module.get_db),
+    user_id: int = Depends(current_user_id),
+) -> dict:
+    """File a loose page into a subject/chapter (or re-file it) without re-uploading.
+    Sets the provided tags on this user's UserPage; the page then groups under /dossiers."""
+    up = db.get(billing.UserPage, (user_id, content_hash))
+    if up is None:
+        raise HTTPException(status_code=404, detail="Page not found for this user")
+    if body.subject is not None:
+        up.subject = body.subject.strip() or None
+    if body.chapter is not None:
+        up.chapter = body.chapter.strip() or None
+    if body.page_no is not None:
+        up.page_no = body.page_no
+    db.commit()
+    return {"content_hash": content_hash, "subject": up.subject, "chapter": up.chapter, "page_no": up.page_no}
+
+
+@app.delete("/decks/{content_hash}")
+def delete_deck(
+    content_hash: str,
+    db: Session = Depends(db_module.get_db),
+    user_id: int = Depends(current_user_id),
+) -> dict:
+    """Remove a page from this user's library (housekeeping for junk/blank scans).
+    Drops only the user's UserPage row; the global cached page content is untouched."""
+    up = db.get(billing.UserPage, (user_id, content_hash))
+    if up is not None:
+        db.delete(up)
+        db.commit()
+    return {"deleted": True, "content_hash": content_hash}
 
 
 @app.get("/decks/{content_hash}")
