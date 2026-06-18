@@ -241,3 +241,80 @@ async def generate_notes(text: str) -> dict:
     notes_md, model_used = await asyncio.to_thread(_generate_notes_sync, text[:_NOTES_MAX_CHARS])
     log.info("[notes] %s -> %d chars", model_used, len(notes_md))
     return {"notes_md": notes_md, "model_used": model_used}
+
+
+# ---- OCR rescue (called by ocr.py on the low-quality rescue path) ----------
+# Best-effort LLM cleanup of garbage OCR text. Reuses the exact tiered LLM path
+# (Groq primary, Gemini fallback). Only ever called on the rescue path in
+# ocr.py — NOT on every page — so the cost profile stays disciplined.
+_REPAIR_SYSTEM = (
+    "This is raw OCR text from a printed textbook/study page and may contain "
+    "recognition errors, broken words, and noise. Rewrite it as clean, coherent, "
+    "readable text that preserves the original meaning and structure. Fix obvious "
+    "OCR mistakes. Do NOT add facts or commentary that aren't supported by the "
+    "text. If it's hopelessly garbled, return your best reconstruction. Respond "
+    "with ONLY the cleaned text, no preamble."
+)
+_REPAIR_MAX_CHARS = 24000  # cap text fed to the model
+
+
+def _groq_repair(text: str) -> str:
+    from groq import Groq
+    client = Groq(api_key=os.environ["GROQ_API_KEY"])
+    try:
+        resp = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[{"role": "system", "content": _REPAIR_SYSTEM},
+                      {"role": "user", "content": text}],
+            temperature=0.0,
+            max_tokens=4096,
+        )
+    except Exception as e:
+        _classify(e)
+    return (resp.choices[0].message.content or "").strip()
+
+
+def _gemini_repair(text: str) -> str:
+    import google.generativeai as genai
+    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+    model = genai.GenerativeModel(
+        model_name=GEMINI_MODEL,
+        system_instruction=_REPAIR_SYSTEM,
+        generation_config={"temperature": 0.0},
+    )
+    try:
+        resp = model.generate_content(text)
+    except Exception as e:
+        _classify(e)
+    return (getattr(resp, "text", "") or "").strip()
+
+
+def _repair_sync(text: str) -> tuple[str, str]:
+    """Returns (cleaned_text, model_used). Groq first; Gemini on rate-limit/unavailable."""
+    tiers = [("groq", _groq_repair), ("gemini", _gemini_repair)]
+    last = None
+    for name, fn in tiers:
+        try:
+            out = fn(text)
+            if out:
+                return out, name
+            last = RuntimeError(f"{name} returned empty repair")
+        except (_RateLimit, _Unavailable) as e:
+            log.warning("[repair] %s unavailable: %s -> next provider", name, e)
+            last = e
+    raise RuntimeError(f"ocr repair failed on all providers: {last}")
+
+
+async def repair_ocr_text(raw: str) -> str:
+    """Best-effort LLM cleanup of low-quality OCR text. Returns cleaned text on
+    success; on total LLM failure (or empty input) returns the raw input
+    unchanged — NEVER throws, since this is the rescue path."""
+    if not raw or not raw.strip():
+        return raw
+    try:
+        cleaned, model_used = await asyncio.to_thread(_repair_sync, raw[:_REPAIR_MAX_CHARS])
+    except Exception as e:
+        log.warning("[repair] all providers failed (%s) — returning raw unchanged", e)
+        return raw
+    log.info("[repair] %s -> %d chars (from %d)", model_used, len(cleaned), len(raw))
+    return cleaned or raw

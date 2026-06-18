@@ -80,6 +80,16 @@ export function captureImage(file, { subject, chapter, page_no } = {}) {
   if (page_no != null && page_no !== "") fd.append("page_no", String(page_no));
   return request("/capture", { method: "POST", body: fd, isForm: true });
 }
+// Capture a small PDF (<=5 pages). Each page becomes a deck filed into subject/chapter.
+// Returns {pdf, count, subject, chapter, pages:[...], errors:[{page_no, reason}]}.
+export function capturePdf(file, { subject, chapter, page_no } = {}) {
+  const fd = new FormData();
+  fd.append("file", file);
+  if (subject != null && subject !== "") fd.append("subject", subject);
+  if (chapter != null && chapter !== "") fd.append("chapter", chapter);
+  if (page_no != null && page_no !== "") fd.append("page_no", String(page_no));
+  return request("/capture/pdf", { method: "POST", body: fd, isForm: true });
+}
 
 // ---- decks ----
 // Returns {count, decks:[{content_hash, title, subject, chapter, page_no,
@@ -110,6 +120,19 @@ export function getDossiers() {
 }
 export function getDossier(subject, chapter) {
   return request(`/dossiers/${encodeURIComponent(subject)}/${encodeURIComponent(chapter)}`);
+}
+// Subject-wide notes view (read-only; never triggers generation).
+// Returns {subject, chapters_total, chapters_with_notes, chapters:[{chapter, has_notes, notes_md, notes_generated_at, page_count, quiz_count}]}.
+export function getSubjectNotes(subject) {
+  return request(`/dossiers/${encodeURIComponent(subject)}/notes`);
+}
+// Backfill notes for every chapter in a subject in one call.
+// Returns {subject, generated, skipped, errors, chapters_with_notes}.
+export function generateAllNotes(subject) {
+  return request(`/dossiers/${encodeURIComponent(subject)}/notes/generate-all`, {
+    method: "POST",
+    body: {},
+  });
 }
 export function regenerateNotes(subject, chapter) {
   return request(`/dossiers/${encodeURIComponent(subject)}/${encodeURIComponent(chapter)}/notes/regenerate`, {

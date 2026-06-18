@@ -1,19 +1,45 @@
 import React, { useRef, useState } from "react";
-import { captureImage, ApiError } from "../api.js";
+import { captureImage, capturePdf, ApiError } from "../api.js";
 import Deck from "../components/Deck.jsx";
 
+function isPdf(file) {
+  return file.type === "application/pdf" || /\.pdf$/i.test(file.name || "");
+}
+
 export default function Capture({ onDeck, goUpgrade, onUnauthorized }) {
-  const inputRef = useRef(null);
+  const cameraRef = useRef(null);
+  const galleryRef = useRef(null);
   const [busy, setBusy] = useState(false);
+  const [busyKind, setBusyKind] = useState("image"); // image | pdf
   const [error, setError] = useState("");
   const [result, setResult] = useState(null); // {content_hash, flashcards, quiz, ...}
+  const [pdfResult, setPdfResult] = useState(null); // {count, subject, chapter, pages, errors}
   const [subject, setSubject] = useState("");
   const [chapter, setChapter] = useState("");
   const [pageNo, setPageNo] = useState("");
   const [filedUnder, setFiledUnder] = useState(null); // {subject, chapter}
 
-  function pick() {
-    inputRef.current?.click();
+  function openCamera() {
+    cameraRef.current?.click();
+  }
+  function openGallery() {
+    galleryRef.current?.click();
+  }
+
+  function mapImageError(err) {
+    const reason = err instanceof ApiError && err.detail && typeof err.detail === "object" ? err.detail.reason : null;
+    if (err.status === 415 || reason === "unsupported_type") {
+      return "That file type isn't supported. Use a JPG, PNG, or WebP photo.";
+    } else if (err.status === 413 || reason === "file_too_large") {
+      return "That image is too large. Try a smaller photo.";
+    } else if (err.status === 429) {
+      return "You're scanning too fast. Wait a moment and try again.";
+    } else if (err.status === 503 || reason === "ocr_unavailable" || reason === "cards_unavailable") {
+      return "Our reader is busy right now. Your free page wasn't used — try again in a minute.";
+    } else if (reason === "empty_file") {
+      return "That file looks empty. Pick a photo and try again.";
+    }
+    return "Something went wrong processing that page. Try again.";
   }
 
   async function onFile(e) {
@@ -22,12 +48,56 @@ export default function Capture({ onDeck, goUpgrade, onUnauthorized }) {
     if (!file) return;
     setError("");
     setResult(null);
-    setBusy(true);
+    setPdfResult(null);
     const tags = {
       subject: subject.trim(),
       chapter: chapter.trim(),
       page_no: pageNo.trim(),
     };
+
+    if (isPdf(file)) {
+      setBusyKind("pdf");
+      setBusy(true);
+      try {
+        const res = await capturePdf(file, tags);
+        setPdfResult(res);
+        setFiledUnder(
+          (res.subject || res.chapter || tags.subject || tags.chapter)
+            ? { subject: res.subject || tags.subject || "Unsorted", chapter: res.chapter || tags.chapter || "Loose pages" }
+            : null
+        );
+      } catch (err) {
+        if (err.status === 401) { onUnauthorized(); return; }
+        if (err.status === 402) {
+          setError("You've used all your free pages. Upgrade to keep scanning.");
+          goUpgrade();
+          return;
+        }
+        const reason = err instanceof ApiError && err.detail && typeof err.detail === "object" ? err.detail : {};
+        if (err.status === 422 || reason.reason === "pdf_too_many_pages") {
+          const max = reason.max ?? 5;
+          const got = reason.got;
+          setError(`PDFs can be up to ${max} pages — yours has ${got ?? "more"}. Split it and try again.`);
+        } else if (err.status === 413 || reason.reason === "file_too_large") {
+          const mb = reason.max_mb;
+          setError(mb ? `That PDF is too large (max ${mb} MB). Try a smaller file.` : "That PDF is too large. Try a smaller file.");
+        } else if (err.status === 415 || reason.reason === "unsupported_type") {
+          setError("That file type isn't supported here. Upload a PDF or use Take photo for images.");
+        } else if (reason.reason === "bad_pdf" || reason.reason === "empty_pdf" || reason.reason === "empty_file") {
+          setError("We couldn't read that PDF. Make sure it's a valid file and try again.");
+        } else if (err.status === 429) {
+          setError("You're scanning too fast. Wait a moment and try again.");
+        } else {
+          setError("Something went wrong processing that PDF. Try again.");
+        }
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
+    setBusyKind("image");
+    setBusy(true);
     try {
       const res = await captureImage(file, tags);
       setResult(res);
@@ -47,20 +117,7 @@ export default function Capture({ onDeck, goUpgrade, onUnauthorized }) {
         goUpgrade();
         return;
       }
-      const reason = err instanceof ApiError && err.detail && typeof err.detail === "object" ? err.detail.reason : null;
-      if (err.status === 415 || reason === "unsupported_type") {
-        setError("That file type isn't supported. Use a JPG, PNG, or WebP photo.");
-      } else if (err.status === 413 || reason === "file_too_large") {
-        setError("That image is too large. Try a smaller photo.");
-      } else if (err.status === 429) {
-        setError("You're scanning too fast. Wait a moment and try again.");
-      } else if (err.status === 503 || reason === "ocr_unavailable" || reason === "cards_unavailable") {
-        setError("Our reader is busy right now. Your free page wasn't used — try again in a minute.");
-      } else if (reason === "empty_file") {
-        setError("That file looks empty. Pick a photo and try again.");
-      } else {
-        setError("Something went wrong processing that page. Try again.");
-      }
+      setError(mapImageError(err));
     } finally {
       setBusy(false);
     }
@@ -70,8 +127,51 @@ export default function Capture({ onDeck, goUpgrade, onUnauthorized }) {
     return (
       <div className="card loading-wrap">
         <div className="spinner" />
-        <p>Reading your page…</p>
-        <p className="muted">OCR + generating cards. This can take a moment.</p>
+        {busyKind === "pdf" ? (
+          <>
+            <p>Processing your PDF…</p>
+            <p className="muted">Up to a few seconds per page. Hang tight.</p>
+          </>
+        ) : (
+          <>
+            <p>Reading your page…</p>
+            <p className="muted">OCR + generating cards. This can take a moment.</p>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  if (pdfResult) {
+    const pages = pdfResult.pages || [];
+    const errs = pdfResult.errors || [];
+    const added = pages.length;
+    const where = filedUnder ? filedUnder.chapter : (pdfResult.chapter || "your library");
+    return (
+      <div>
+        <div className="card pop">
+          <h2>PDF imported</h2>
+          {added > 0 ? (
+            <div className="banner success" style={{ marginBottom: 12 }}>
+              📚 Added {added} page{added === 1 ? "" : "s"} to <b>{where}</b>
+              {filedUnder ? <> · {filedUnder.subject}</> : null}
+            </div>
+          ) : (
+            <p className="muted">No pages could be turned into decks from that PDF.</p>
+          )}
+          {errs.length > 0 && (
+            <div className="banner pending" style={{ marginBottom: 12 }}>
+              {errs.length} page{errs.length === 1 ? "" : "s"} couldn't be processed:
+              <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+                {errs.map((er) => (
+                  <li key={er.page_no}>Page {er.page_no} — {er.reason}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <p className="muted">Find these in your <b>Library</b> and tap <b>Notes</b> to study them.</p>
+          <button className="btn-ghost" onClick={() => { setPdfResult(null); setFiledUnder(null); }}>Scan another page</button>
+        </div>
       </div>
     );
   }
@@ -113,7 +213,7 @@ export default function Capture({ onDeck, goUpgrade, onUnauthorized }) {
     <div>
       <div className="card">
         <h1>Scan a page</h1>
-        <p className="muted">Take a photo of a textbook or notes page. We'll turn it into flashcards and a quiz.</p>
+        <p className="muted">Take a photo, pick an image, or upload a PDF (up to 5 pages). We'll turn it into flashcards and a quiz.</p>
         {error && <p className="error">{error}</p>}
 
         <div className="tag-grid">
@@ -153,19 +253,36 @@ export default function Capture({ onDeck, goUpgrade, onUnauthorized }) {
           Optional, but tagging keeps your library tidy — pages group into chapters automatically. ✨
         </p>
 
-        <div className="capture-zone" onClick={pick} role="button">
+        <div className="capture-zone" onClick={openCamera} role="button">
           <div className="big">📷</div>
-          <div>Tap to take a photo or choose an image</div>
+          <div>Tap to take a photo of your page</div>
         </div>
+
+        {/* Camera: images only, opens rear camera on mobile. */}
         <input
-          ref={inputRef}
+          ref={cameraRef}
           className="hidden-input"
           type="file"
           accept="image/*"
           capture="environment"
           onChange={onFile}
         />
-        <button className="btn-primary mt" onClick={pick}>Open camera</button>
+        {/* Gallery / files: existing image OR a PDF, no camera. */}
+        <input
+          ref={galleryRef}
+          className="hidden-input"
+          type="file"
+          accept="image/*,application/pdf"
+          onChange={onFile}
+        />
+
+        <div className="capture-actions">
+          <button className="btn-primary auto" onClick={openCamera}>📷 Take photo</button>
+          <button className="btn-ghost auto" onClick={openGallery}>🖼 Choose from gallery</button>
+        </div>
+        <p className="muted" style={{ marginTop: 8 }}>
+          Gallery accepts images or PDFs. PDFs file every page into the chapter above.
+        </p>
       </div>
     </div>
   );

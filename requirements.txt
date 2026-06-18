@@ -9,6 +9,7 @@ psycopg[binary]>=3.1         # prod Postgres driver (sqlite used in dev by defau
 # Capture -> OCR -> cards pipeline (versions mirror /opt/invoicegraph)
 groq>=1.4                    # card generation (llama-3.3-70b-versatile, JSON mode); >=1.x for httpx 0.28 compat
 google-generativeai>=0.8     # OCR via Gemini vision (gemini-2.0-flash)
+pymupdf>=1.24                # PDF page split/render (import fitz) for /capture/pdf
 Pillow==10.4.0               # image open/validate for OCR
 pytesseract==0.3.13          # local OCR fallback when Gemini is rate-limited (needs tesseract binary)
 # Passwordless auth (email OTP + JWT)

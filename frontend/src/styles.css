@@ -67,13 +67,21 @@ body {
   flex: 1;
   background: none;
   border: none;
-  padding: 12px 4px;
-  font-size: 12px;
+  padding: 12px 2px;
+  font-size: 11px;
   color: var(--muted);
   font-weight: 600;
 }
 .tabbar button.active { color: var(--navy); }
-.tabbar .ico { display: block; font-size: 20px; line-height: 1; margin-bottom: 3px; }
+.tabbar .ico { display: block; font-size: 19px; line-height: 1; margin-bottom: 3px; }
+
+.capture-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+.capture-actions button { flex: 1; min-width: 140px; }
 
 .card {
   background: var(--card);

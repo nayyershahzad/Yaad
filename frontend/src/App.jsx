@@ -4,6 +4,7 @@ import Landing from "./screens/Landing.jsx";
 import Login from "./screens/Login.jsx";
 import Capture from "./screens/Capture.jsx";
 import Library from "./screens/Library.jsx";
+import Notes from "./screens/Notes.jsx";
 import Dossier from "./screens/Dossier.jsx";
 import DeckView from "./screens/DeckView.jsx";
 import Billing from "./screens/Billing.jsx";
@@ -45,7 +46,7 @@ export default function App() {
 
   const [authed, setAuthed] = useState(isAuthed());
   const [showLogin, setShowLogin] = useState(false); // logged-out: landing vs login screen
-  const [tab, setTab] = useState("capture"); // capture | decks | challenges | social | billing
+  const [tab, setTab] = useState("capture"); // capture | decks | notes | challenges | social | billing
   const [openDeck, setOpenDeck] = useState(null); // {hash, from} or null
   const [openChapter, setOpenChapter] = useState(null); // {subject, chapter, startQuiz} or null
   const [billingResult, setBillingResult] = useState(null);
@@ -161,6 +162,8 @@ export default function App() {
     screen = <Capture onDeck={showDeck} goUpgrade={() => setTab("billing")} onUnauthorized={onUnauthorized} />;
   } else if (tab === "decks") {
     screen = <Library onOpenChapter={showChapter} onOpenPage={showDeck} onUnauthorized={onUnauthorized} />;
+  } else if (tab === "notes") {
+    screen = <Notes onOpenChapter={showChapter} onUnauthorized={onUnauthorized} />;
   } else if (tab === "challenges") {
     screen = <Challenges onUnauthorized={onUnauthorized} />;
   } else if (tab === "social") {
@@ -193,6 +196,9 @@ export default function App() {
           </button>
           <button className={tab === "decks" ? "active" : ""} onClick={() => setTab("decks")}>
             <span className="ico">📚</span>Library
+          </button>
+          <button className={tab === "notes" ? "active" : ""} onClick={() => setTab("notes")}>
+            <span className="ico">📝</span>Notes
           </button>
           <button className={tab === "challenges" ? "active" : ""} onClick={() => setTab("challenges")}>
             <span className="ico">🏆</span>Compete

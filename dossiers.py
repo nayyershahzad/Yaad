@@ -77,6 +77,35 @@ class DossierDetailOut(BaseModel):
     notes_error: bool = False
 
 
+class SubjectNotesChapter(BaseModel):
+    chapter: str
+    has_notes: bool
+    notes_md: str | None
+    notes_generated_at: str | None
+    page_count: int
+    quiz_count: int
+
+
+class SubjectNotesOut(BaseModel):
+    subject: str
+    chapters: list[SubjectNotesChapter]
+    chapters_total: int
+    chapters_with_notes: int
+
+
+class GenerateAllError(BaseModel):
+    chapter: str
+    reason: str
+
+
+class GenerateAllOut(BaseModel):
+    subject: str
+    generated: int
+    skipped: int
+    errors: list[GenerateAllError]
+    chapters_with_notes: int
+
+
 class RevisionSuggestionOut(BaseModel):
     subject: str
     chapter: str
@@ -132,10 +161,16 @@ def _get_or_create_dossier(db: Session, user_id: int, subject: str, chapter: str
     return d
 
 
-async def _generate_and_cache_notes(db: Session, dossier: Dossier, pages: list[UserPage]) -> bool:
-    """Generate chapter notes from the concatenated ExtractedPage text of the
-    chapter's pages and cache them on the Dossier. Returns True on success.
-    On LLM failure leaves notes_md as-is and returns False (caller surfaces a flag)."""
+async def _generate_notes_status(db: Session, dossier: Dossier, pages: list[UserPage]) -> str:
+    """Shared note-generation core used by both the single-chapter endpoints and
+    the subject-wide generate-all. Concatenates the chapter's ExtractedPage text in
+    page order, calls cards.generate_notes(), and caches the result on the Dossier.
+
+    Returns one of:
+      "generated" — notes produced and cached
+      "skipped"   — too little chapter text; no LLM call was made (cost guard)
+      "error"     — all LLM providers failed; notes_md left unchanged
+    """
     hashes = [p.content_hash for p in pages]
     if hashes:
         eps = db.execute(
@@ -152,12 +187,22 @@ async def _generate_and_cache_notes(db: Session, dossier: Dossier, pages: list[U
     except Exception as e:  # all providers failed
         log.warning("[dossiers] notes generation failed for %s/%s: %s",
                     dossier.subject, dossier.chapter, str(e)[:160])
-        return False
+        return "error"
 
     dossier.notes_md = result["notes_md"]
     dossier.notes_generated_at = _now()
     db.commit()
-    return result["notes_md"] is not None
+    # generate_notes returns notes_md=None when the text was too short to be worth
+    # an LLM call — surface that as a skip rather than a generation.
+    return "generated" if result["notes_md"] is not None else "skipped"
+
+
+async def _generate_and_cache_notes(db: Session, dossier: Dossier, pages: list[UserPage]) -> bool:
+    """Single-chapter wrapper: generate + cache notes, returning True on success.
+    On LLM failure (or too-little-text) leaves notes_md null and returns False so
+    callers can surface a notes_error flag. Behaviour preserved from before the
+    shared-core refactor."""
+    return await _generate_notes_status(db, dossier, pages) == "generated"
 
 
 def _combined_deck(db: Session, pages: list[UserPage]) -> tuple[list[dict], list[dict]]:
@@ -294,6 +339,124 @@ def revision_suggestion(
         quiz_count=v["quiz_count"],
         last_scanned_at=v["last_scanned_at"].isoformat() if v["last_scanned_at"] else None,
         prompt_text=f"Time to revise {chapter} of {subject}!",
+    )
+
+
+@router.get("/{subject}/notes", response_model=SubjectNotesOut)
+def subject_notes(
+    subject: str,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(current_user_id),
+) -> SubjectNotesOut:
+    """All chapters under one subject for the current user with their notes status.
+    Cheap read: returns ONLY the cached notes_md (null when not yet generated) — it
+    never triggers LLM generation. Use POST .../notes/generate-all to backfill."""
+    rows = db.execute(
+        select(UserPage, PageContent)
+        .join(PageContent, PageContent.content_hash == UserPage.content_hash, isouter=True)
+        .where(
+            UserPage.user_id == user_id,
+            UserPage.subject == subject,
+            UserPage.chapter.is_not(None),
+        )
+    ).all()
+
+    # Cached notes for this subject's chapters.
+    dossier_rows = db.execute(
+        select(Dossier).where(
+            Dossier.user_id == user_id,
+            Dossier.subject == subject,
+        )
+    ).scalars().all()
+    dossier_by_chapter = {d.chapter: d for d in dossier_rows}
+
+    agg: dict[str, dict] = {}
+    for up, pc in rows:
+        bucket = agg.setdefault(up.chapter, {"page_count": 0, "quiz_count": 0})
+        bucket["page_count"] += 1
+        if pc is not None:
+            bucket["quiz_count"] += len(json.loads(pc.quiz_json or "[]"))
+
+    chapters: list[SubjectNotesChapter] = []
+    for chapter in sorted(agg.keys(), key=lambda c: c.lower()):
+        b = agg[chapter]
+        d = dossier_by_chapter.get(chapter)
+        notes_md = d.notes_md if d is not None else None
+        chapters.append(SubjectNotesChapter(
+            chapter=chapter,
+            has_notes=notes_md is not None,
+            notes_md=notes_md,
+            notes_generated_at=(d.notes_generated_at.isoformat()
+                                if d is not None and d.notes_generated_at else None),
+            page_count=b["page_count"],
+            quiz_count=b["quiz_count"],
+        ))
+
+    return SubjectNotesOut(
+        subject=subject,
+        chapters=chapters,
+        chapters_total=len(chapters),
+        chapters_with_notes=sum(1 for c in chapters if c.has_notes),
+    )
+
+
+@router.post("/{subject}/notes/generate-all", response_model=GenerateAllOut)
+async def generate_all_notes(
+    subject: str,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(current_user_id),
+) -> GenerateAllOut:
+    """One-tap backfill: generate + cache notes for EVERY chapter under this subject
+    that doesn't already have them. Cost-aware — chapters that already have notes_md
+    are left untouched (no LLM call). Per-chapter LLM failures are tolerated: they go
+    into `errors` and the batch continues, never 500-ing the whole request. Reuses the
+    exact same _generate_notes_status core as the single-chapter endpoints."""
+    chapters = db.execute(
+        select(UserPage.chapter)
+        .where(
+            UserPage.user_id == user_id,
+            UserPage.subject == subject,
+            UserPage.chapter.is_not(None),
+        )
+        .distinct()
+        .order_by(UserPage.chapter.asc())
+    ).scalars().all()
+    if not chapters:
+        raise HTTPException(status_code=404, detail={"reason": "subject_not_found"})
+
+    generated = 0
+    skipped = 0
+    errors: list[GenerateAllError] = []
+
+    for chapter in chapters:
+        dossier = _get_or_create_dossier(db, user_id, subject, chapter)
+        if dossier.notes_md is not None:
+            continue  # already have notes — skip, no LLM call (cost guard)
+        pages = _chapter_pages(db, user_id, subject, chapter)
+        status = await _generate_notes_status(db, dossier, pages)
+        if status == "generated":
+            generated += 1
+        elif status == "skipped":
+            skipped += 1  # too little text — counted, but not an error
+        else:  # "error"
+            errors.append(GenerateAllError(chapter=chapter, reason="llm_failed"))
+
+    chapters_with_notes = db.execute(
+        select(func.count())
+        .select_from(Dossier)
+        .where(
+            Dossier.user_id == user_id,
+            Dossier.subject == subject,
+            Dossier.notes_md.is_not(None),
+        )
+    ).scalar_one()
+
+    return GenerateAllOut(
+        subject=subject,
+        generated=generated,
+        skipped=skipped,
+        errors=errors,
+        chapters_with_notes=chapters_with_notes,
     )
 
 
