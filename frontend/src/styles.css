@@ -224,3 +224,93 @@ button {
 
 .center { text-align: center; }
 .mt { margin-top: 14px; }
+
+.ok-msg { color: var(--green); font-size: 14px; margin: 0 0 12px; font-weight: 600; }
+.row-between { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+button.auto { width: auto; }
+
+/* ---- challenges ---- */
+.challenge-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+.challenge-title { font-weight: 700; font-size: 16px; }
+.challenge-actions { display: flex; gap: 8px; margin-top: 12px; }
+.challenge-actions .btn-primary { flex: 1; }
+.challenge-actions .btn-ghost { flex: 1; }
+
+.deck-row.pickable { cursor: pointer; transition: border-color 0.15s, transform 0.1s; }
+.deck-row.pickable:active { transform: scale(0.99); }
+.deck-row.picked { border-color: var(--navy); box-shadow: 0 0 0 2px rgba(31,56,100,0.15); }
+
+.quiz-progress {
+  text-align: center;
+  font-weight: 700;
+  color: var(--navy);
+  background: #eef1f8;
+  border-radius: 20px;
+  padding: 8px;
+  margin-bottom: 14px;
+  position: sticky;
+  top: 56px;
+  z-index: 5;
+}
+
+.result-card { padding: 26px 16px; }
+.result-emoji { font-size: 54px; line-height: 1; margin-bottom: 8px; }
+.result-score { font-size: 32px; font-weight: 800; color: var(--navy); margin: 4px 0 2px; }
+.result-card .btn-primary { margin-top: 14px; }
+
+/* ---- leaderboard ---- */
+.lb-card { padding: 6px 8px; }
+.lb-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.lb-row:last-child { border-bottom: none; }
+.lb-rank { font-size: 18px; font-weight: 800; min-width: 38px; text-align: center; color: var(--navy); }
+.lb-name { flex: 1; font-weight: 600; }
+.lb-time { color: var(--muted); font-weight: 500; font-size: 13px; }
+.lb-score { font-weight: 800; color: var(--navy); }
+.lb-row.podium { background: #fbf8ee; }
+.lb-row.me { background: #eef1f8; border-radius: 10px; }
+.lb-row.me .lb-name::after { content: " 🫵"; }
+
+/* ---- friends ---- */
+.friend-row { display: flex; align-items: center; gap: 12px; }
+.avatar {
+  width: 40px; height: 40px; border-radius: 50%;
+  background: var(--navy); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; flex-shrink: 0;
+}
+.friend-name { flex: 1; font-weight: 600; word-break: break-all; }
+.friend-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+/* ---- feed ---- */
+.feed-event { padding: 14px 16px; }
+.feed-head { display: flex; gap: 12px; align-items: flex-start; }
+.feed-body { flex: 1; }
+.feed-text { font-weight: 600; }
+.feed-emoji { margin-right: 6px; }
+.feed-event .meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.reactions { display: flex; gap: 8px; margin-top: 12px; }
+.react-btn {
+  background: #eef1f8; color: var(--navy);
+  display: flex; align-items: center; gap: 5px;
+  padding: 7px 12px; border-radius: 20px; font-size: 15px;
+  transition: transform 0.1s;
+}
+.react-btn:active { transform: scale(0.92); }
+.react-btn.active { background: var(--navy); color: #fff; }
+.react-count { font-weight: 700; font-size: 13px; }
+
+/* ---- share bar ---- */
+.share-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.share-bar .meta { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+/* ---- pop animation (result + cards) ---- */
+.pop { animation: pop 0.3s ease; }
+@keyframes pop {
+  0% { transform: scale(0.92); opacity: 0; }
+  60% { transform: scale(1.03); }
+  100% { transform: scale(1); opacity: 1; }
+}

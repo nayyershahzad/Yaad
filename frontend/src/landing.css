@@ -1,0 +1,278 @@
+/* Yaad landing page — playful pastel / Duolingo style. Mobile-first. */
+
+.landing {
+  --mint:     #c7f0d8;
+  --mint-d:   #2fa86a;
+  --peach:    #ffe0cf;
+  --peach-d:  #e9743a;
+  --lavender: #e6ddff;
+  --lav-d:    #7c5cdb;
+  --sky:      #d4ecff;
+  --sky-d:    #2e8bd6;
+  --sun:      #ffe9a8;
+  --ink:      #2b2740;
+  --ink-soft: #5a5570;
+  --cream:    #fff9f3;
+
+  --lp-font: "Nunito", "Baloo 2", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  font-family: var(--lp-font);
+  color: var(--ink);
+  background:
+    radial-gradient(1200px 500px at 80% -5%, var(--sun) 0%, rgba(255,233,168,0) 55%),
+    radial-gradient(900px 450px at -10% 15%, var(--lavender) 0%, rgba(230,221,255,0) 60%),
+    var(--cream);
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  overflow-x: hidden;
+}
+
+/* Landing fills the viewport edge-to-edge even though .app constrains width.
+   We break out of the 520px shell only for the landing route. */
+.app.landing-shell { max-width: 100%; background: transparent; }
+
+/* ---- top nav ---- */
+.lp-nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  padding-top: max(14px, env(safe-area-inset-top));
+  backdrop-filter: blur(8px);
+  background: rgba(255,249,243,0.7);
+}
+.lp-brand { font-weight: 800; font-size: 22px; letter-spacing: -0.5px; color: var(--ink); }
+.lp-navbtn {
+  background: #fff;
+  color: var(--lav-d);
+  border: 2px solid var(--lavender);
+  border-radius: 999px;
+  padding: 9px 18px;
+  font-weight: 800;
+  font-size: 14px;
+  box-shadow: 0 3px 0 var(--lavender);
+  transition: transform .12s ease;
+}
+.lp-navbtn:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--lavender); }
+
+.landing section { padding: 0 20px; max-width: 720px; margin: 0 auto; }
+
+/* ---- hero ---- */
+.lp-hero {
+  position: relative;
+  text-align: center;
+  padding-top: 18px;
+  padding-bottom: 36px;
+}
+.blob { position: absolute; border-radius: 50%; filter: blur(8px); opacity: .55; z-index: 0; }
+.blob-a { width: 180px; height: 180px; background: var(--mint); top: 40px; left: -40px; }
+.blob-b { width: 150px; height: 150px; background: var(--peach); top: 120px; right: -30px; }
+
+.lp-title {
+  position: relative;
+  z-index: 2;
+  font-size: clamp(34px, 9vw, 52px);
+  line-height: 1.05;
+  font-weight: 900;
+  letter-spacing: -1px;
+  margin: 8px 0 14px;
+}
+.balloon { display: inline-block; animation: float 3s ease-in-out infinite; }
+.lp-sub {
+  position: relative; z-index: 2;
+  font-size: clamp(16px, 4.4vw, 19px);
+  color: var(--ink-soft);
+  max-width: 30ch;
+  margin: 0 auto 24px;
+  line-height: 1.5;
+  font-weight: 600;
+}
+.lp-cta {
+  position: relative; z-index: 2;
+  background: linear-gradient(180deg, #ffd34d, #ffb01f);
+  color: #5a3d00;
+  border: none;
+  border-radius: 999px;
+  padding: 16px 30px;
+  font-size: 19px;
+  font-weight: 900;
+  box-shadow: 0 6px 0 #e89400, 0 10px 22px rgba(232,148,0,.35);
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+.lp-cta:active { transform: translateY(4px); box-shadow: 0 2px 0 #e89400; }
+.lp-cta-note { position: relative; z-index: 2; font-size: 13px; color: var(--ink-soft); margin: 12px 0 0; font-weight: 600; }
+
+/* ---- owl mascot ---- */
+.owl {
+  position: relative; z-index: 2;
+  width: 150px; height: 150px;
+  margin: 0 auto 6px;
+  animation: float 4s ease-in-out infinite;
+}
+.owl.mini { width: 96px; height: 96px; margin-bottom: 4px; }
+.owl-body {
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, #b58bff, #9a6bf0);
+  border-radius: 50% 50% 46% 46%;
+  box-shadow: inset 0 -14px 0 rgba(0,0,0,.06);
+}
+.owl-ears { position: absolute; top: -10px; left: 0; right: 0; display: flex; justify-content: space-between; padding: 0 16px; }
+.owl-ears .ear {
+  width: 0; height: 0;
+  border-left: 14px solid transparent;
+  border-right: 14px solid transparent;
+  border-bottom: 24px solid #9a6bf0;
+}
+.owl-eyes { position: absolute; top: 26%; left: 0; right: 0; display: flex; justify-content: center; gap: 6px; }
+.owl-eyes .eye {
+  width: 38%; max-width: 56px; aspect-ratio: 1;
+  background: #fff; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: inset 0 0 0 3px var(--sun);
+}
+.owl .mini .eye, .owl.mini .eye { box-shadow: inset 0 0 0 2px var(--sun); }
+.eye .pupil {
+  width: 42%; height: 42%; background: var(--ink); border-radius: 50%;
+  animation: blink 5s infinite;
+}
+.owl-beak {
+  position: absolute; top: 52%; left: 50%; transform: translateX(-50%);
+  width: 0; height: 0;
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
+  border-top: 14px solid #ffb01f;
+}
+.owl-wing {
+  position: absolute; top: 38%; width: 22px; height: 46px;
+  background: #8a5be0; border-radius: 50%;
+  transform-origin: top center;
+}
+.owl-wing.left  { left: 4px;  animation: wing-l 3s ease-in-out infinite; }
+.owl-wing.right { right: 4px; animation: wing-r 3s ease-in-out infinite; }
+.owl-book {
+  position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%);
+  font-size: 30px;
+}
+
+@keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+@keyframes blink { 0%,92%,100% { transform: scaleY(1); } 95% { transform: scaleY(0.1); } }
+@keyframes wing-l { 0%,100% { transform: rotate(8deg); } 50% { transform: rotate(20deg); } }
+@keyframes wing-r { 0%,100% { transform: rotate(-8deg); } 50% { transform: rotate(-20deg); } }
+
+/* ---- shared headings ---- */
+.lp-h2 {
+  font-size: clamp(22px, 6vw, 30px);
+  font-weight: 900;
+  letter-spacing: -0.5px;
+  text-align: center;
+  margin: 0 0 18px;
+}
+
+/* ---- steps ---- */
+.lp-steps { padding-top: 18px; padding-bottom: 18px; }
+.steps-strip { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; }
+.step-card {
+  background: #fff;
+  border-radius: 22px;
+  padding: 18px 14px;
+  width: 120px;
+  text-align: center;
+  box-shadow: 0 6px 0 rgba(124,92,219,.18);
+}
+.step-emoji { font-size: 34px; }
+.step-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; margin: 6px 0 4px;
+  background: var(--lavender); color: var(--lav-d);
+  border-radius: 50%; font-weight: 900; font-size: 14px;
+}
+.step-label { font-size: 13px; font-weight: 700; color: var(--ink-soft); }
+.step-arrow { font-size: 24px; color: var(--lav-d); font-weight: 900; }
+
+/* ---- features ---- */
+.lp-features { padding-top: 30px; padding-bottom: 10px; }
+.feature-card {
+  display: flex; gap: 14px; align-items: flex-start;
+  border-radius: 24px;
+  padding: 18px 18px;
+  margin-bottom: 16px;
+  box-shadow: 0 8px 0 rgba(0,0,0,.05);
+  transition: transform .18s ease;
+}
+.feature-card:hover { transform: translateY(-3px) rotate(-.4deg); }
+.tone-mint     { background: var(--mint); }
+.tone-peach    { background: var(--peach); }
+.tone-lavender { background: var(--lavender); }
+.tone-sky      { background: var(--sky); }
+.feature-icon {
+  font-size: 32px;
+  background: rgba(255,255,255,.7);
+  border-radius: 18px;
+  width: 56px; height: 56px; flex: 0 0 56px;
+  display: flex; align-items: center; justify-content: center;
+}
+.feature-text { flex: 1; }
+.feature-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.feature-head h3 { font-size: 18px; font-weight: 900; margin: 0; }
+.feature-text p { margin: 4px 0 0; font-size: 14.5px; line-height: 1.45; color: var(--ink-soft); font-weight: 600; }
+.soon-pill {
+  background: #fff; color: var(--lav-d);
+  border-radius: 999px; padding: 3px 10px;
+  font-size: 11px; font-weight: 900; letter-spacing: .3px;
+  text-transform: uppercase;
+}
+
+/* ---- stats ---- */
+.lp-stats {
+  display: flex; justify-content: space-around; gap: 10px;
+  background: #fff; border-radius: 26px;
+  padding: 22px 14px; margin-top: 24px;
+  box-shadow: 0 8px 0 rgba(46,139,214,.15);
+}
+.stat { text-align: center; display: flex; flex-direction: column; gap: 4px; }
+.stat-num { font-size: 30px; font-weight: 900; color: var(--sky-d); line-height: 1; }
+.stat-label { font-size: 12px; font-weight: 700; color: var(--ink-soft); max-width: 12ch; }
+
+/* ---- closing ---- */
+.lp-close { text-align: center; padding-top: 40px; padding-bottom: 30px; }
+
+/* ---- footer ---- */
+.lp-footer {
+  text-align: center; padding: 26px 20px 32px;
+  padding-bottom: max(32px, env(safe-area-inset-bottom));
+  display: flex; flex-direction: column; gap: 6px;
+  font-weight: 800; color: var(--ink);
+}
+.lp-footnote { font-size: 12.5px; font-weight: 600; color: var(--ink-soft); }
+
+/* ---- scroll reveal ---- */
+[data-reveal] { opacity: 0; transform: translateY(24px); transition: opacity .6s ease, transform .6s ease; }
+[data-reveal].in { opacity: 1; transform: none; }
+
+/* ---- entrance pop for step cards ---- */
+.pop { animation: pop .5s cubic-bezier(.18,.89,.32,1.28) both; }
+@keyframes pop { from { transform: scale(.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+/* ---- CTA wiggle on hover/tap ---- */
+@media (hover: hover) {
+  .wiggle:hover { animation: wiggle .4s ease; }
+}
+.wiggle:active { animation: wiggle .4s ease; }
+@keyframes wiggle {
+  0%,100% { transform: rotate(0); }
+  25% { transform: rotate(-2.5deg); }
+  75% { transform: rotate(2.5deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .owl, .balloon, .owl-wing, .pop, .eye .pupil { animation: none !important; }
+  [data-reveal] { opacity: 1; transform: none; }
+}
+
+@media (min-width: 560px) {
+  .feature-card { padding: 22px 24px; }
+}

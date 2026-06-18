@@ -87,3 +87,70 @@ export function billingStatus() {
 export function subscribe() {
   return request("/billing/subscribe", { method: "POST", body: {} });
 }
+
+// ---- challenges ----
+export function createChallenge({ title, description, source_content_hash, scoring_rule, starts_at, ends_at } = {}) {
+  return request("/challenges", {
+    method: "POST",
+    body: { title, description, source_content_hash, scoring_rule, starts_at, ends_at },
+  });
+}
+export function listChallenges() {
+  return request("/challenges");
+}
+export function getChallenge(challengeId) {
+  return request(`/challenges/${challengeId}`);
+}
+export function submitAttempt(challengeId, { num_correct, total_questions, duration_seconds } = {}) {
+  return request(`/challenges/${challengeId}/attempt`, {
+    method: "POST",
+    body: { num_correct, total_questions, duration_seconds },
+  });
+}
+export function getLeaderboard(challengeId) {
+  return request(`/challenges/${challengeId}/leaderboard`);
+}
+
+// ---- social: friends ----
+export function requestFriend({ addressee_user_id, email } = {}) {
+  return request("/social/friends/request", {
+    method: "POST",
+    body: { addressee_user_id, email },
+  });
+}
+export function listFriendRequests() {
+  return request("/social/friends/requests");
+}
+export function respondFriend(friendshipId, { action } = {}) {
+  return request(`/social/friends/${friendshipId}/respond`, {
+    method: "POST",
+    body: { action },
+  });
+}
+export function listFriends() {
+  return request("/social/friends");
+}
+
+// ---- social: decks ----
+export function shareDeck({ content_hash, visibility = "friends" } = {}) {
+  return request("/social/decks/share", {
+    method: "POST",
+    body: { content_hash, visibility },
+  });
+}
+
+// ---- social: feed ----
+export function getFeed() {
+  return request("/social/feed");
+}
+export function react(eventId, { reaction_type } = {}) {
+  return request(`/social/feed/${eventId}/react`, {
+    method: "POST",
+    body: { reaction_type },
+  });
+}
+export function unreact(eventId, reaction_type) {
+  return request(`/social/feed/${eventId}/react/${encodeURIComponent(reaction_type)}`, {
+    method: "DELETE",
+  });
+}

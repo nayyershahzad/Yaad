@@ -3,8 +3,17 @@ import React, { useState } from "react";
 // Renders the deck shape returned by /capture and /decks/{hash}:
 //   flashcards: [{ front, back }]
 //   quiz:       [{ question, options[4], answer_index, explanation }]
-export default function Deck({ flashcards = [], quiz = [] }) {
+//
+// Default mode = study (flashcards + quiz tabs).
+// When `challenge` is set, only the quiz runs and `onQuizComplete({ numCorrect,
+// total })` fires once every question has been answered — used by the Challenges
+// flow to score a run.
+export default function Deck({ flashcards = [], quiz = [], challenge = false, onQuizComplete }) {
   const [mode, setMode] = useState("cards"); // cards | quiz
+
+  if (challenge) {
+    return <Quiz items={quiz} onComplete={onQuizComplete} />;
+  }
 
   return (
     <div>
@@ -52,7 +61,7 @@ function Flashcards({ cards }) {
   );
 }
 
-function Quiz({ items }) {
+function Quiz({ items, onComplete }) {
   const [answers, setAnswers] = useState({}); // index -> chosen option index
 
   if (!items.length) {
@@ -61,11 +70,27 @@ function Quiz({ items }) {
 
   function choose(qi, oi) {
     if (answers[qi] !== undefined) return; // lock after first answer
-    setAnswers((a) => ({ ...a, [qi]: oi }));
+    const next = { ...answers, [qi]: oi };
+    setAnswers(next);
+    // When every question has an answer, tally and report (challenge mode only).
+    if (onComplete && Object.keys(next).length === items.length) {
+      const numCorrect = items.reduce(
+        (acc, q, idx) => acc + (next[idx] === q.answer_index ? 1 : 0),
+        0
+      );
+      onComplete({ numCorrect, total: items.length });
+    }
   }
+
+  const answeredCount = Object.keys(answers).length;
 
   return (
     <div>
+      {onComplete && (
+        <div className="quiz-progress">
+          Answered {answeredCount} / {items.length}
+        </div>
+      )}
       {items.map((q, qi) => {
         const chosen = answers[qi];
         const answered = chosen !== undefined;

@@ -22,6 +22,8 @@ import db as db_module
 import ocr
 import cards
 import auth
+import challenges
+import social
 import log_setup
 from content_models import PageContent
 from auth import current_user_id  # real JWT dependency (replaces auth_stub)
@@ -36,6 +38,8 @@ app.dependency_overrides[billing.current_user_id] = current_user_id
 
 app.include_router(billing.router)
 app.include_router(auth.router)
+app.include_router(challenges.router)
+app.include_router(social.router)
 
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_MB", "8")) * 1024 * 1024
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}

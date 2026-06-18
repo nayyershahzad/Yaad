@@ -13,6 +13,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import billing            # noqa: E402,F401
 import content_models     # noqa: E402,F401
 import auth_models        # noqa: E402,F401
+import challenge_models    # noqa: E402,F401
+import social_models       # noqa: E402,F401
 
 config = context.config
 if config.config_file_name is not None:

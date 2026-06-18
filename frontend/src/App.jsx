@@ -1,10 +1,14 @@
 import React, { useEffect, useState } from "react";
 import { isAuthed, clearToken } from "./api.js";
+import Landing from "./screens/Landing.jsx";
 import Login from "./screens/Login.jsx";
 import Capture from "./screens/Capture.jsx";
 import Decks from "./screens/Decks.jsx";
 import DeckView from "./screens/DeckView.jsx";
 import Billing from "./screens/Billing.jsx";
+import Challenges from "./screens/Challenges.jsx";
+import Friends from "./screens/Friends.jsx";
+import Feed from "./screens/Feed.jsx";
 
 // Reads ?billing=success|pending|error that billing.paypro_return redirects to,
 // then strips it from the URL so a refresh doesn't re-show the banner.
@@ -28,6 +32,7 @@ const BILLING_MSG = {
 
 export default function App() {
   const [authed, setAuthed] = useState(isAuthed());
+  const [showLogin, setShowLogin] = useState(false); // logged-out: landing vs login screen
   const [tab, setTab] = useState("capture"); // capture | decks | billing
   const [openDeck, setOpenDeck] = useState(null); // content_hash or null
   const [billingResult, setBillingResult] = useState(null);
@@ -47,6 +52,7 @@ export default function App() {
   function logout() {
     clearToken();
     setAuthed(false);
+    setShowLogin(false);
     setOpenDeck(null);
     setTab("capture");
   }
@@ -63,9 +69,29 @@ export default function App() {
   }
 
   if (!authed) {
+    // A billing redirect should drop the visitor straight at the login form.
+    const wantLogin = showLogin || !!billingResult;
+
+    if (!wantLogin) {
+      return (
+        <div className="app landing-shell">
+          <Landing
+            authed={isAuthed()}
+            onLogin={() => setShowLogin(true)}
+            onOpenApp={() => setAuthed(true)}
+          />
+        </div>
+      );
+    }
+
     return (
       <div className="app">
-        <div className="topbar"><span className="brand">Yaad</span></div>
+        <div className="topbar">
+          <span className="brand">Yaad</span>
+          <div className="right">
+            <button className="btn-ghost" onClick={() => setShowLogin(false)}>Back</button>
+          </div>
+        </div>
         <div className="content">
           {billingResult && (
             <div className={`banner ${BILLING_MSG[billingResult].cls}`}>
@@ -85,6 +111,10 @@ export default function App() {
     screen = <Capture onDeck={showDeck} goUpgrade={() => setTab("billing")} onUnauthorized={onUnauthorized} />;
   } else if (tab === "decks") {
     screen = <Decks onOpen={setOpenDeck} onUnauthorized={onUnauthorized} />;
+  } else if (tab === "challenges") {
+    screen = <Challenges onUnauthorized={onUnauthorized} />;
+  } else if (tab === "social") {
+    screen = <Social onUnauthorized={onUnauthorized} />;
   } else {
     screen = <Billing onUnauthorized={onUnauthorized} />;
   }
@@ -114,11 +144,33 @@ export default function App() {
           <button className={tab === "decks" ? "active" : ""} onClick={() => setTab("decks")}>
             <span className="ico">🗂️</span>Decks
           </button>
+          <button className={tab === "challenges" ? "active" : ""} onClick={() => setTab("challenges")}>
+            <span className="ico">🏆</span>Compete
+          </button>
+          <button className={tab === "social" ? "active" : ""} onClick={() => setTab("social")}>
+            <span className="ico">👥</span>Friends
+          </button>
           <button className={tab === "billing" ? "active" : ""} onClick={() => setTab("billing")}>
-            <span className="ico">⭐</span>Plan
+            <span className="ico">⚙️</span>Account
           </button>
         </nav>
       )}
+    </div>
+  );
+}
+
+// Friends + Feed live under one tab with a segmented toggle.
+function Social({ onUnauthorized }) {
+  const [sub, setSub] = useState("feed"); // feed | friends
+  return (
+    <div>
+      <div className="seg" style={{ marginBottom: 16 }}>
+        <button className={sub === "feed" ? "active" : ""} onClick={() => setSub("feed")}>📣 Activity</button>
+        <button className={sub === "friends" ? "active" : ""} onClick={() => setSub("friends")}>👥 Friends</button>
+      </div>
+      {sub === "feed"
+        ? <Feed onUnauthorized={onUnauthorized} />
+        : <Friends onUnauthorized={onUnauthorized} />}
     </div>
   );
 }
