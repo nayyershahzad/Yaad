@@ -81,7 +81,7 @@ export default function Landing({ authed, onLogin, onOpenApp }) {
       <section className="lp-hero">
         <div className="blob blob-a" aria-hidden="true" />
         <div className="blob blob-b" aria-hidden="true" />
-        <img className="lp-hero-logo" src="/yaad-logo.png" alt="Yaad — owl mascot peeking from behind a study card" />
+        <Owl />
         <h1 className="lp-title">
           Study that feels<br />like a game <span className="balloon">🎈</span>
         </h1>
