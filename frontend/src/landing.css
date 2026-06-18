@@ -45,7 +45,16 @@
   backdrop-filter: blur(8px);
   background: rgba(255,249,243,0.7);
 }
-.lp-brand { font-weight: 800; font-size: 22px; letter-spacing: -0.5px; color: var(--ink); }
+.lp-brand { font-weight: 800; font-size: 22px; letter-spacing: -0.5px; color: var(--ink); display: inline-flex; align-items: center; gap: 6px; }
+.lp-logo { height: 32px; width: 32px; display: block; }
+.lp-hero-logo {
+  position: relative; z-index: 2;
+  display: block;
+  width: min(200px, 56vw);
+  height: auto;
+  margin: 0 auto 6px;
+  animation: float 4s ease-in-out infinite;
+}
 .lp-navbtn {
   background: #fff;
   color: var(--lav-d);
