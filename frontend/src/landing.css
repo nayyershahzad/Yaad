@@ -47,6 +47,7 @@
 }
 .lp-brand { font-weight: 800; font-size: 22px; letter-spacing: -0.5px; color: var(--ink); display: inline-flex; align-items: center; gap: 6px; }
 .lp-logo { height: 32px; width: 32px; display: block; }
+.lp-mini-logo { width: 96px; height: 96px; display: block; margin: 0 auto 10px; animation: float 4s ease-in-out infinite; }
 .lp-hero-logo {
   position: relative; z-index: 2;
   display: block;

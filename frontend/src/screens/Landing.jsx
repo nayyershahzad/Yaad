@@ -137,12 +137,7 @@ export default function Landing({ authed, onLogin, onOpenApp }) {
 
       {/* closing CTA */}
       <section className="lp-close" data-reveal ref={enterRef}>
-        <div className="owl mini"><div className="owl-body">
-          <div className="owl-ears"><span className="ear" /><span className="ear" /></div>
-          <div className="owl-eyes"><span className="eye"><span className="pupil" /></span><span className="eye"><span className="pupil" /></span></div>
-          <div className="owl-beak" />
-          <div className="owl-wing left" /><div className="owl-wing right" />
-        </div></div>
+        <img className="lp-mini-logo" src="/yaad-logo.png" alt="" />
         <h2 className="lp-h2">Ready to actually enjoy revising?</h2>
         <button className="lp-cta wiggle" onClick={authed ? onOpenApp : onLogin}>
           {authed ? "Open app" : "Start learning free"} →
