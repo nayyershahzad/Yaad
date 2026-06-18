@@ -7,6 +7,7 @@ redis>=5.0
 python-multipart>=0.0.9      # UploadFile / multipart form parsing
 psycopg[binary]>=3.1         # prod Postgres driver (sqlite used in dev by default)
 # Capture -> OCR -> cards pipeline (versions mirror /opt/invoicegraph)
+anthropic>=0.69             # card/notes/repair generation (Claude Haiku 4.5, primary tier)
 groq>=1.4                    # card generation (llama-3.3-70b-versatile, JSON mode); >=1.x for httpx 0.28 compat
 google-generativeai>=0.8     # OCR via Gemini vision (gemini-2.0-flash)
 pymupdf>=1.24                # PDF page split/render (import fitz) for /capture/pdf

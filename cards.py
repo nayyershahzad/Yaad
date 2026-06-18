@@ -23,6 +23,53 @@ log = logging.getLogger(__name__)
 
 GROQ_MODEL   = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+HAIKU_MODEL  = os.getenv("HAIKU_MODEL", "claude-haiku-4-5")
+
+# Anthropic Claude Haiku 4.5 is the PRIMARY tier for text generation (deck/notes/
+# repair). Groq is the first fallback, Gemini the second. OCR is unaffected
+# (ocr.py stays Gemini-vision primary). The haiku tier is gated on ANTHROPIC_API_KEY:
+# if it's empty/unset we drop it entirely and degrade cleanly to the Groq-primary
+# path (see _deck_tiers / _notes_tiers / _repair_tiers).
+_HAIKU_ENABLED = bool(os.getenv("ANTHROPIC_API_KEY", "").strip())
+
+# Strict JSON schema for structured-output deck generation on Haiku. Mirrors the
+# Deck/_parse_deck shape. Structured outputs reject length/range constraints
+# (minItems/maxItems/minimum/maximum), so "exactly 4 options" and "answer_index
+# 0..3" are still enforced by Pydantic in _parse_deck (the tier loop retries the
+# provider once on a ValidationError). additionalProperties:false on every object.
+_DECK_JSON_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "flashcards": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "front": {"type": "string"},
+                    "back": {"type": "string"},
+                },
+                "required": ["front", "back"],
+                "additionalProperties": False,
+            },
+        },
+        "quiz": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "question": {"type": "string"},
+                    "options": {"type": "array", "items": {"type": "string"}},
+                    "answer_index": {"type": "integer"},
+                    "explanation": {"type": "string"},
+                },
+                "required": ["question", "options", "answer_index", "explanation"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["flashcards", "quiz"],
+    "additionalProperties": False,
+}
 
 MAX_FLASHCARDS = 8
 MAX_QUIZ = 5
@@ -105,7 +152,40 @@ def _classify(e: Exception) -> None:
     raise _Unavailable(f"unexpected: {e}")  # treat unknown as fall-through-able
 
 
+def _classify_anthropic(e: Exception) -> None:
+    """Map an Anthropic SDK exception onto the tiered fall-through exceptions so a
+    Haiku failure falls through to Groq exactly like the existing tiers. Rate
+    limits -> _RateLimit; 5xx / connection / timeout -> _Unavailable; anything
+    else -> _Unavailable (fall through, never hard-crash the request)."""
+    import anthropic
+    if isinstance(e, anthropic.RateLimitError):
+        raise _RateLimit(str(e))
+    if isinstance(e, (anthropic.InternalServerError,
+                      anthropic.APIConnectionError,
+                      anthropic.APITimeoutError)):
+        raise _Unavailable(str(e))
+    if isinstance(e, anthropic.APIStatusError) and getattr(e, "status_code", 0) >= 500:
+        raise _Unavailable(str(e))
+    raise _Unavailable(f"unexpected: {e}")
+
+
 # ---- providers (sync; run in a thread) ------------------------------------
+def _haiku_deck(text: str) -> Deck:
+    import anthropic
+    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    try:
+        resp = client.messages.create(
+            model=HAIKU_MODEL,
+            max_tokens=4096,
+            system=_SYSTEM,
+            messages=[{"role": "user", "content": text}],
+            output_config={"format": {"type": "json_schema", "schema": _DECK_JSON_SCHEMA}},
+        )
+    except Exception as e:
+        _classify_anthropic(e)
+    return _parse_deck(resp.content[0].text)
+
+
 def _groq_deck(text: str) -> Deck:
     from groq import Groq
     client = Groq(api_key=os.environ["GROQ_API_KEY"])
@@ -142,6 +222,8 @@ def _generate_sync(text: str) -> tuple[Deck, str]:
     """Returns (deck, model_used). Groq first; Gemini on rate-limit/unavailable.
     Bad JSON / schema -> retry the same provider once before falling through."""
     tiers = [("groq", _groq_deck), ("gemini", _gemini_deck)]
+    if _HAIKU_ENABLED:
+        tiers.insert(0, ("haiku", _haiku_deck))
     last = None
     for name, fn in tiers:
         for attempt in (1, 2):
@@ -185,6 +267,21 @@ _MIN_NOTES_TEXT = 40  # below this, not worth an LLM call
 _NOTES_MAX_CHARS = 24000  # cap concatenated chapter text fed to the model
 
 
+def _haiku_notes(text: str) -> str:
+    import anthropic
+    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    try:
+        resp = client.messages.create(
+            model=HAIKU_MODEL,
+            max_tokens=2048,
+            system=_NOTES_SYSTEM,
+            messages=[{"role": "user", "content": text}],
+        )
+    except Exception as e:
+        _classify_anthropic(e)
+    return (resp.content[0].text or "").strip()
+
+
 def _groq_notes(text: str) -> str:
     from groq import Groq
     client = Groq(api_key=os.environ["GROQ_API_KEY"])
@@ -219,6 +316,8 @@ def _gemini_notes(text: str) -> str:
 def _generate_notes_sync(text: str) -> tuple[str, str]:
     """Returns (notes_md, model_used). Groq first; Gemini on rate-limit/unavailable."""
     tiers = [("groq", _groq_notes), ("gemini", _gemini_notes)]
+    if _HAIKU_ENABLED:
+        tiers.insert(0, ("haiku", _haiku_notes))
     last = None
     for name, fn in tiers:
         try:
@@ -258,6 +357,21 @@ _REPAIR_SYSTEM = (
 _REPAIR_MAX_CHARS = 24000  # cap text fed to the model
 
 
+def _haiku_repair(text: str) -> str:
+    import anthropic
+    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    try:
+        resp = client.messages.create(
+            model=HAIKU_MODEL,
+            max_tokens=2048,
+            system=_REPAIR_SYSTEM,
+            messages=[{"role": "user", "content": text}],
+        )
+    except Exception as e:
+        _classify_anthropic(e)
+    return (resp.content[0].text or "").strip()
+
+
 def _groq_repair(text: str) -> str:
     from groq import Groq
     client = Groq(api_key=os.environ["GROQ_API_KEY"])
@@ -292,6 +406,8 @@ def _gemini_repair(text: str) -> str:
 def _repair_sync(text: str) -> tuple[str, str]:
     """Returns (cleaned_text, model_used). Groq first; Gemini on rate-limit/unavailable."""
     tiers = [("groq", _groq_repair), ("gemini", _gemini_repair)]
+    if _HAIKU_ENABLED:
+        tiers.insert(0, ("haiku", _haiku_repair))
     last = None
     for name, fn in tiers:
         try:

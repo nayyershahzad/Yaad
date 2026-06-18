@@ -29,7 +29,7 @@ log = logging.getLogger(__name__)
 SECRET_KEY            = os.getenv("SECRET_KEY", "")
 ALGORITHM             = "HS256"
 ACCESS_TOKEN_TTL_DAYS = int(os.getenv("ACCESS_TOKEN_TTL_DAYS", "30"))
-OTP_REQ_PER_EMAIL     = 3       # per 10 min
+OTP_REQ_PER_EMAIL     = 5       # per 10 min (beta-relaxed)
 OTP_REQ_WINDOW        = 600
 
 _bearer = HTTPBearer(auto_error=False)
