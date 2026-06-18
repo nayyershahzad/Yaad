@@ -34,9 +34,15 @@ _SYSTEM = (
     '{"flashcards":[{"front":"...","back":"..."}],'
     '"quiz":[{"question":"...","options":["a","b","c","d"],'
     '"answer_index":0,"explanation":"..."}]}\n'
+    "FLASHCARDS are informational, NOT questions. The `front` is a key term, concept, "
+    "name, or topic from the page (a short noun phrase, e.g. 'The Big Bang', "
+    "'Evolutionary biology', 'Age of the universe'). The `back` is a concise factual "
+    "explanation or definition of that term. Never phrase the `front` as a question "
+    "(no 'What is...', 'How...', 'Why...'); questions belong ONLY in the quiz.\n"
+    "QUIZ items are multiple-choice questions to test recall: each `question` is an "
+    "actual question, with exactly 4 `options` and `answer_index` in 0..3.\n"
     f"Produce up to {MAX_FLASHCARDS} flashcards and up to {MAX_QUIZ} quiz questions, "
-    "grounded ONLY in the provided text. Each quiz item must have exactly 4 options "
-    "and answer_index in 0..3. If the text has too little content, return empty arrays."
+    "grounded ONLY in the provided text. If the text has too little content, return empty arrays."
 )
 
 
