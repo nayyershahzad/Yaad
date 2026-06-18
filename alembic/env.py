@@ -15,6 +15,7 @@ import content_models     # noqa: E402,F401
 import auth_models        # noqa: E402,F401
 import challenge_models    # noqa: E402,F401
 import social_models       # noqa: E402,F401
+import dossier_models       # noqa: E402,F401
 
 config = context.config
 if config.config_file_name is not None:

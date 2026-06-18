@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import { capture, ApiError } from "../api.js";
+import { captureImage, ApiError } from "../api.js";
 import Deck from "../components/Deck.jsx";
 
 export default function Capture({ onDeck, goUpgrade, onUnauthorized }) {
@@ -7,6 +7,10 @@ export default function Capture({ onDeck, goUpgrade, onUnauthorized }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState(null); // {content_hash, flashcards, quiz, ...}
+  const [subject, setSubject] = useState("");
+  const [chapter, setChapter] = useState("");
+  const [pageNo, setPageNo] = useState("");
+  const [filedUnder, setFiledUnder] = useState(null); // {subject, chapter}
 
   function pick() {
     inputRef.current?.click();
@@ -19,9 +23,19 @@ export default function Capture({ onDeck, goUpgrade, onUnauthorized }) {
     setError("");
     setResult(null);
     setBusy(true);
+    const tags = {
+      subject: subject.trim(),
+      chapter: chapter.trim(),
+      page_no: pageNo.trim(),
+    };
     try {
-      const res = await capture(file);
+      const res = await captureImage(file, tags);
       setResult(res);
+      setFiledUnder(
+        tags.subject || tags.chapter
+          ? { subject: tags.subject || "Unsorted", chapter: tags.chapter || "Loose pages" }
+          : null
+      );
     } catch (err) {
       if (err.status === 401) {
         onUnauthorized();
@@ -66,16 +80,21 @@ export default function Capture({ onDeck, goUpgrade, onUnauthorized }) {
     const empty = (result.flashcards?.length || 0) === 0 && (result.quiz?.length || 0) === 0;
     return (
       <div>
-        <div className="card">
+        <div className="card pop">
           <h2>Your new deck</h2>
+          {filedUnder && (
+            <div className="banner success" style={{ marginBottom: 12 }}>
+              📁 Filed under <b>{filedUnder.chapter}</b> · {filedUnder.subject}
+            </div>
+          )}
           <p className="muted">
             {result.deck_cached ? "Loaded from cache. " : "Freshly generated. "}
             {result.flashcards?.length || 0} flashcards · {result.quiz?.length || 0} quiz questions
           </p>
-          <button className="btn-ghost" onClick={() => setResult(null)}>Scan another page</button>
+          <button className="btn-ghost" onClick={() => { setResult(null); setFiledUnder(null); }}>Scan another page</button>
           {result.content_hash && (
             <button className="btn-link" onClick={() => onDeck(result.content_hash)}>
-              Open in Decks
+              Open in Library
             </button>
           )}
         </div>
@@ -96,6 +115,44 @@ export default function Capture({ onDeck, goUpgrade, onUnauthorized }) {
         <h1>Scan a page</h1>
         <p className="muted">Take a photo of a textbook or notes page. We'll turn it into flashcards and a quiz.</p>
         {error && <p className="error">{error}</p>}
+
+        <div className="tag-grid">
+          <div>
+            <label htmlFor="cap-subject">Subject</label>
+            <input
+              id="cap-subject"
+              type="text"
+              placeholder="e.g. Biology"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+            />
+          </div>
+          <div>
+            <label htmlFor="cap-chapter">Chapter</label>
+            <input
+              id="cap-chapter"
+              type="text"
+              placeholder="e.g. Cell Structure"
+              value={chapter}
+              onChange={(e) => setChapter(e.target.value)}
+            />
+          </div>
+          <div>
+            <label htmlFor="cap-page">Page #</label>
+            <input
+              id="cap-page"
+              type="number"
+              inputMode="numeric"
+              placeholder="e.g. 42"
+              value={pageNo}
+              onChange={(e) => setPageNo(e.target.value)}
+            />
+          </div>
+        </div>
+        <p className="muted" style={{ marginTop: -4 }}>
+          Optional, but tagging keeps your library tidy — pages group into chapters automatically. ✨
+        </p>
+
         <div className="capture-zone" onClick={pick} role="button">
           <div className="big">📷</div>
           <div>Tap to take a photo or choose an image</div>

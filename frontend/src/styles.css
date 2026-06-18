@@ -307,6 +307,69 @@ button.auto { width: auto; }
 .share-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .share-bar .meta { font-size: 13px; color: var(--muted); margin-top: 2px; }
 
+/* ---- capture tagging ---- */
+.tag-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+.tag-grid > div:last-child { grid-column: 1 / -1; }
+.tag-grid input { margin-bottom: 8px; }
+
+/* ---- library / dossiers ---- */
+.subject-group { margin-bottom: 18px; }
+.subject-head {
+  font-weight: 800; font-size: 15px; color: var(--navy);
+  margin: 4px 2px 10px;
+}
+.chapter-card {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  cursor: pointer; transition: transform 0.1s, border-color 0.15s;
+}
+.chapter-card:active { transform: scale(0.99); }
+.chapter-card .chapter-title { font-weight: 700; font-size: 16px; }
+.chapter-main { flex: 1; min-width: 0; }
+.notes-ready { color: var(--green); font-weight: 700; }
+.notes-pending { color: var(--muted); font-weight: 600; }
+.pages-row { cursor: pointer; }
+
+.seg.seg-3 button { font-size: 14px; padding: 11px 4px; }
+
+.banner.revision {
+  background: #eef1f8; color: var(--navy);
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.banner.revision button { background: #fff; }
+
+/* ---- markdown notes ---- */
+.markdown { font-size: 15px; line-height: 1.55; color: var(--text); }
+.markdown .md-h { color: var(--navy); margin: 16px 0 8px; line-height: 1.3; }
+.markdown .md-h:first-child { margin-top: 0; }
+.markdown .md-h1 { font-size: 19px; }
+.markdown .md-h2 { font-size: 17px; }
+.markdown .md-h3 { font-size: 15px; }
+.markdown .md-p { margin: 0 0 12px; }
+.markdown .md-list { margin: 0 0 12px; padding-left: 22px; }
+.markdown .md-list li { margin-bottom: 5px; }
+.markdown code {
+  background: #eef1f8; color: var(--navy);
+  padding: 1px 6px; border-radius: 6px; font-size: 13px;
+}
+
+/* ---- share-by-link ---- */
+.link-share label { margin-bottom: 8px; }
+.link-row { display: flex; gap: 8px; align-items: center; }
+.link-row input {
+  flex: 1; margin-bottom: 0; font-size: 13px; font-family: monospace;
+  padding: 11px 12px;
+}
+
+/* ---- quiz results (normal mode) ---- */
+.res-ok { color: var(--green); font-weight: 800; }
+.res-no { color: var(--red); font-weight: 800; }
+
+/* ---- beta billing ---- */
+.price-tag { font-size: 30px; font-weight: 800; color: var(--navy); margin-bottom: 6px; }
+.price-tag .price-per { font-size: 15px; font-weight: 600; color: var(--muted); margin-left: 2px; }
+.beta-plan { opacity: 0.92; }
+.cta-card { padding: 28px 18px; }
+
 /* ---- pop animation (result + cards) ---- */
 .pop { animation: pop 0.3s ease; }
 @keyframes pop {

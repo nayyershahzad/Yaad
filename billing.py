@@ -29,6 +29,10 @@ log = logging.getLogger("yaad.billing")
 FREE_SHEETS      = int(os.getenv("FREE_SHEETS", "10"))
 PLAN_PRICE_PKR   = int(os.getenv("PLAN_PRICE_PKR", "200"))
 PLAN_PERIOD_DAYS = int(os.getenv("PLAN_PERIOD_DAYS", "30"))
+# Beta switch: while true, the free-page paywall is lifted entirely — everyone
+# can capture freely (no 402) and the quota is treated as unlimited. Default on.
+BETA_FREE        = os.getenv("BETA_FREE", "true").lower() == "true"
+BETA_MESSAGE     = "Early access — free while Yaad is in beta 🎉"
 STRICT_VERIFY    = os.getenv("PAYPRO_STRICT_VERIFY", "true").lower() == "true"
 ALLOWED_IPS = {ip.strip() for ip in os.getenv("PAYPRO_IPN_ALLOWED_IPS", "").split(",") if ip.strip()}
 
@@ -80,6 +84,11 @@ class UserPage(Base):
     user_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     content_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    # Per-user dossier tagging: the same page can be filed under a different
+    # subject/chapter/page_no by each user, so these live on the per-user row.
+    subject: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    chapter: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    page_no: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class ExtractedPage(Base):
@@ -115,7 +124,9 @@ def _sub(db: Session, user_id: int) -> Subscription:
 
 
 def sheets_remaining(db: Session, user_id: int) -> int | None:
-    """None means unlimited (active subscriber)."""
+    """None means unlimited (active subscriber, or beta-free is on)."""
+    if BETA_FREE:
+        return None
     if _sub(db, user_id).is_active():
         return None
     usage = db.get(SheetUsage, user_id)
@@ -124,7 +135,12 @@ def sheets_remaining(db: Session, user_id: int) -> int | None:
 
 
 def consume_sheet(db: Session, user_id: int) -> None:
-    """Call once per processed page. Raises 402 when the free quota is spent."""
+    """Call once per processed page. Raises 402 when the free quota is spent.
+
+    While BETA_FREE is on the paywall is lifted: never raises 402 and never
+    burns a sheet (quota is effectively unlimited)."""
+    if BETA_FREE:
+        return
     if _sub(db, user_id).is_active():
         return
     usage = db.get(SheetUsage, user_id)
@@ -219,6 +235,8 @@ def billing_status(db: Session = Depends(get_db), user_id: int = Depends(current
         "free_sheets_remaining": remaining,  # null = unlimited
         "price_pkr": PLAN_PRICE_PKR,
         "period_days": PLAN_PERIOD_DAYS,
+        "beta_free": BETA_FREE,
+        "beta_message": BETA_MESSAGE if BETA_FREE else None,
     }
 
 

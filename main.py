@@ -14,7 +14,7 @@ from __future__ import annotations
 import os
 import json
 
-from fastapi import Depends, FastAPI, Request, UploadFile, File, HTTPException, status
+from fastapi import Depends, FastAPI, Request, UploadFile, File, Form, HTTPException, status
 from sqlalchemy.orm import Session
 
 import billing
@@ -24,6 +24,7 @@ import cards
 import auth
 import challenges
 import social
+import dossiers
 import log_setup
 from content_models import PageContent
 from auth import current_user_id  # real JWT dependency (replaces auth_stub)
@@ -40,6 +41,7 @@ app.include_router(billing.router)
 app.include_router(auth.router)
 app.include_router(challenges.router)
 app.include_router(social.router)
+app.include_router(dossiers.router)
 
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_MB", "8")) * 1024 * 1024
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
@@ -74,6 +76,9 @@ def _refund_scan(db: Session, user_id: int, content_hash: str, info: dict) -> No
 async def capture(
     request: Request,
     file: UploadFile = File(...),
+    subject: str | None = Form(None),
+    chapter: str | None = Form(None),
+    page_no: int | None = Form(None),
     _rl: None = Depends(billing.scan_rate_limit),     # 429 on velocity abuse
     db: Session = Depends(db_module.get_db),
     user_id: int = Depends(current_user_id),
@@ -101,6 +106,21 @@ async def capture(
 
     # 402 here if free quota is spent; no-ops quota for re-scans (dedup).
     info = billing.register_scan(db, user_id, content_hash)
+
+    # ---- dossier tagging (per-user) ----
+    # register_scan has created/found this user's UserPage row; tag it with any
+    # supplied subject/chapter/page_no so /dossiers can group it. Re-scanning a
+    # page with new tags re-files it (last write wins). Only set provided fields.
+    if subject is not None or chapter is not None or page_no is not None:
+        up = db.get(billing.UserPage, (user_id, content_hash))
+        if up is not None:
+            if subject is not None:
+                up.subject = subject.strip() or None
+            if chapter is not None:
+                up.chapter = chapter.strip() or None
+            if page_no is not None:
+                up.page_no = page_no
+            db.commit()
 
     # ---- OCR (cached per unique page) ----
     ep = db.get(billing.ExtractedPage, content_hash)

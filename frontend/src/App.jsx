@@ -3,12 +3,21 @@ import { isAuthed, clearToken } from "./api.js";
 import Landing from "./screens/Landing.jsx";
 import Login from "./screens/Login.jsx";
 import Capture from "./screens/Capture.jsx";
-import Decks from "./screens/Decks.jsx";
+import Library from "./screens/Library.jsx";
+import Dossier from "./screens/Dossier.jsx";
 import DeckView from "./screens/DeckView.jsx";
 import Billing from "./screens/Billing.jsx";
 import Challenges from "./screens/Challenges.jsx";
 import Friends from "./screens/Friends.jsx";
 import Feed from "./screens/Feed.jsx";
+import SharedDeck from "./screens/SharedDeck.jsx";
+
+// Public deep-link: /shared/{content_hash} renders a no-login read-only deck.
+function readSharedHash() {
+  const path = window.location.pathname || "";
+  const m = path.match(/^\/shared\/([^/]+)\/?$/);
+  return m ? decodeURIComponent(m[1]) : null;
+}
 
 // Reads ?billing=success|pending|error that billing.paypro_return redirects to,
 // then strips it from the URL so a refresh doesn't re-show the banner.
@@ -31,10 +40,14 @@ const BILLING_MSG = {
 };
 
 export default function App() {
+  // /shared/{hash} takes precedence over everything — public, no auth.
+  const sharedHash = readSharedHash();
+
   const [authed, setAuthed] = useState(isAuthed());
   const [showLogin, setShowLogin] = useState(false); // logged-out: landing vs login screen
-  const [tab, setTab] = useState("capture"); // capture | decks | billing
-  const [openDeck, setOpenDeck] = useState(null); // content_hash or null
+  const [tab, setTab] = useState("capture"); // capture | decks | challenges | social | billing
+  const [openDeck, setOpenDeck] = useState(null); // {hash, from} or null
+  const [openChapter, setOpenChapter] = useState(null); // {subject, chapter, startQuiz} or null
   const [billingResult, setBillingResult] = useState(null);
 
   useEffect(() => {
@@ -46,6 +59,10 @@ export default function App() {
     if (billingResult && authed) setTab("billing");
   }, [billingResult, authed]);
 
+  if (sharedHash) {
+    return <SharedDeck hash={sharedHash} />;
+  }
+
   function onAuthed() {
     setAuthed(true);
   }
@@ -54,6 +71,7 @@ export default function App() {
     setAuthed(false);
     setShowLogin(false);
     setOpenDeck(null);
+    setOpenChapter(null);
     setTab("capture");
   }
   function onUnauthorized() {
@@ -62,10 +80,21 @@ export default function App() {
     setAuthed(false);
   }
 
-  // Capture produced a deck and wants to show it.
+  // Capture produced a deck and wants to show it (opened from the Library tab).
   function showDeck(hash) {
-    setOpenDeck(hash);
+    setOpenChapter(null);
+    setOpenDeck({ hash, from: "library" });
     setTab("decks");
+  }
+  // Open a chapter dossier from the Library.
+  function showChapter(subject, chapter, startQuiz = false) {
+    setOpenDeck(null);
+    setOpenChapter({ subject, chapter, startQuiz });
+    setTab("decks");
+  }
+  // Open a single page's deck from inside a dossier.
+  function showPageFromDossier(hash) {
+    setOpenDeck({ hash, from: "dossier" });
   }
 
   if (!authed) {
@@ -104,13 +133,34 @@ export default function App() {
     );
   }
 
+  const overlayOpen = !!openDeck || !!openChapter;
+
   let screen;
   if (openDeck) {
-    screen = <DeckView hash={openDeck} onBack={() => setOpenDeck(null)} onUnauthorized={onUnauthorized} />;
+    const backToDossier = openDeck.from === "dossier" && openChapter;
+    screen = (
+      <DeckView
+        hash={openDeck.hash}
+        backLabel={backToDossier ? "Back to chapter" : "Back to library"}
+        onBack={() => setOpenDeck(null)}
+        onUnauthorized={onUnauthorized}
+      />
+    );
+  } else if (openChapter) {
+    screen = (
+      <Dossier
+        subject={openChapter.subject}
+        chapter={openChapter.chapter}
+        startQuiz={openChapter.startQuiz}
+        onBack={() => setOpenChapter(null)}
+        onOpenPage={showPageFromDossier}
+        onUnauthorized={onUnauthorized}
+      />
+    );
   } else if (tab === "capture") {
     screen = <Capture onDeck={showDeck} goUpgrade={() => setTab("billing")} onUnauthorized={onUnauthorized} />;
   } else if (tab === "decks") {
-    screen = <Decks onOpen={setOpenDeck} onUnauthorized={onUnauthorized} />;
+    screen = <Library onOpenChapter={showChapter} onOpenPage={showDeck} onUnauthorized={onUnauthorized} />;
   } else if (tab === "challenges") {
     screen = <Challenges onUnauthorized={onUnauthorized} />;
   } else if (tab === "social") {
@@ -136,13 +186,13 @@ export default function App() {
         {screen}
       </div>
 
-      {!openDeck && (
+      {!overlayOpen && (
         <nav className="tabbar">
           <button className={tab === "capture" ? "active" : ""} onClick={() => setTab("capture")}>
             <span className="ico">📷</span>Scan
           </button>
           <button className={tab === "decks" ? "active" : ""} onClick={() => setTab("decks")}>
-            <span className="ico">🗂️</span>Decks
+            <span className="ico">📚</span>Library
           </button>
           <button className={tab === "challenges" ? "active" : ""} onClick={() => setTab("challenges")}>
             <span className="ico">🏆</span>Compete

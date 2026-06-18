@@ -57,16 +57,23 @@ export default function Billing({ onUnauthorized }) {
   const s = state.status;
   const active = s?.active;
   const remaining = s?.free_sheets_remaining; // null = unlimited
+  const beta = !!s?.beta_free;
 
   return (
     <div>
       <h1 style={{ marginBottom: 14 }}>Your plan</h1>
       {state.error && <p className="error">{state.error}</p>}
 
+      {beta && s?.beta_message && (
+        <div className="banner success pop">{s.beta_message}</div>
+      )}
+
       {s && (
         <div className="card">
-          <h2>{active ? "Yaad Pro" : "Free"}</h2>
-          {active ? (
+          <h2>{active ? "Yaad Pro" : beta ? "Early access" : "Free"}</h2>
+          {beta ? (
+            <p className="muted">Unlimited scans — free right now during beta. No payment needed yet. 🎉</p>
+          ) : active ? (
             <p className="muted">
               Unlimited scans.{" "}
               {s.period_end ? `Renews / ends ${new Date(s.period_end).toLocaleDateString()}.` : ""}
@@ -81,17 +88,31 @@ export default function Billing({ onUnauthorized }) {
         </div>
       )}
 
-      {!active && s && (
-        <div className="card">
-          <h2>Upgrade to Pro</h2>
-          <p className="muted">
-            Unlimited page scans for {s.price_pkr} PKR every {s.period_days} days.
-          </p>
-          {subError && <p className="error">{subError}</p>}
-          <button className="btn-primary" onClick={onSubscribe} disabled={subBusy}>
-            {subBusy ? "Starting checkout…" : `Subscribe — ${s.price_pkr} PKR`}
-          </button>
-          <p className="muted center mt">You'll be taken to PayPro to pay securely.</p>
+      {/* Pricing card. During beta we de-emphasize the subscribe button. */}
+      {s && !active && (
+        <div className={`card ${beta ? "beta-plan" : ""}`}>
+          <h2>Yaad Pro</h2>
+          <div className="price-tag">{s.price_pkr} PKR<span className="price-per">/mo</span></div>
+          {beta ? (
+            <>
+              <p className="muted">Free during early access — no payment needed yet.</p>
+              {subError && <p className="error">{subError}</p>}
+              <button className="btn-link center" onClick={onSubscribe} disabled={subBusy}>
+                {subBusy ? "Starting checkout…" : "Subscribe early anyway"}
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="muted">
+                Unlimited page scans for {s.price_pkr} PKR every {s.period_days} days.
+              </p>
+              {subError && <p className="error">{subError}</p>}
+              <button className="btn-primary" onClick={onSubscribe} disabled={subBusy}>
+                {subBusy ? "Starting checkout…" : `Subscribe — ${s.price_pkr} PKR`}
+              </button>
+              <p className="muted center mt">You'll be taken to PayPro to pay securely.</p>
+            </>
+          )}
         </div>
       )}
     </div>

@@ -71,6 +71,15 @@ export function capture(file) {
   fd.append("file", file);
   return request("/capture", { method: "POST", body: fd, isForm: true });
 }
+// Capture with optional dossier tagging (subject/chapter/page_no sent as form fields).
+export function captureImage(file, { subject, chapter, page_no } = {}) {
+  const fd = new FormData();
+  fd.append("file", file);
+  if (subject != null && subject !== "") fd.append("subject", subject);
+  if (chapter != null && chapter !== "") fd.append("chapter", chapter);
+  if (page_no != null && page_no !== "") fd.append("page_no", String(page_no));
+  return request("/capture", { method: "POST", body: fd, isForm: true });
+}
 
 // ---- decks ----
 export function listDecks() {
@@ -78,6 +87,23 @@ export function listDecks() {
 }
 export function getDeck(hash) {
   return request(`/decks/${encodeURIComponent(hash)}`);
+}
+
+// ---- dossiers ----
+export function getDossiers() {
+  return request("/dossiers");
+}
+export function getDossier(subject, chapter) {
+  return request(`/dossiers/${encodeURIComponent(subject)}/${encodeURIComponent(chapter)}`);
+}
+export function regenerateNotes(subject, chapter) {
+  return request(`/dossiers/${encodeURIComponent(subject)}/${encodeURIComponent(chapter)}/notes/regenerate`, {
+    method: "POST",
+    body: {},
+  });
+}
+export function getRevisionSuggestion() {
+  return request("/dossiers/revision-suggestion");
 }
 
 // ---- billing ----
@@ -137,6 +163,10 @@ export function shareDeck({ content_hash, visibility = "friends" } = {}) {
     method: "POST",
     body: { content_hash, visibility },
   });
+}
+// PUBLIC (no auth): fetch a deck shared by link/public visibility.
+export function getSharedDeck(content_hash) {
+  return request(`/social/shared/${encodeURIComponent(content_hash)}`, { auth: false });
 }
 
 // ---- social: feed ----

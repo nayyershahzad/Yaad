@@ -13,6 +13,7 @@ with per-type reaction counts and whether the current user reacted.
 """
 from __future__ import annotations
 
+import json
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -25,7 +26,27 @@ import db as db_module
 from auth import current_user_id
 from auth_models import User
 from billing import _now
+from content_models import PageContent
 from social_models import Friendship, SharedDeck, FeedEvent, Reaction
+
+
+def _load_deck_content(db: Session, content_hash: str) -> tuple[list, list]:
+    """Read flashcards + quiz for a page from PageContent. Empty lists if the
+    page has no generated content yet or the JSON is unparseable."""
+    pc = db.get(PageContent, content_hash)
+    if pc is None:
+        return [], []
+
+    def _parse(raw: str | None) -> list:
+        if not raw:
+            return []
+        try:
+            val = json.loads(raw)
+        except (ValueError, TypeError):
+            return []
+        return val if isinstance(val, list) else []
+
+    return _parse(pc.flashcards_json), _parse(pc.quiz_json)
 
 log = logging.getLogger(__name__)
 
@@ -241,6 +262,39 @@ def share_deck(
     db.commit()
     db.refresh(deck)
     return {"id": deck.id, "content_hash": deck.content_hash, "visibility": deck.visibility, "created": True}
+
+
+@router.get("/shared/{content_hash}")
+def get_shared_deck(content_hash: str, db: Session = Depends(get_db)) -> dict:
+    """PUBLIC (no auth): fetch a deck shared by URL.
+
+    Returns the deck if ANY user has a SharedDeck row for this content_hash with
+    visibility in {"link", "public"}. This lets a student share a deck with anyone
+    via a link — no login, friendship, or ownership required. 404 if the page is
+    not shared as link/public.
+    """
+    deck = db.execute(
+        select(SharedDeck, User)
+        .join(User, User.id == SharedDeck.owner_user_id)
+        .where(
+            SharedDeck.content_hash == content_hash,
+            SharedDeck.visibility.in_(["link", "public"]),
+        )
+        .order_by(SharedDeck.shared_at.asc())  # earliest public share wins
+    ).first()
+
+    if deck is None:
+        raise HTTPException(status_code=404, detail={"reason": "deck_not_shared"})
+
+    shared_deck, owner = deck
+    flashcards, quiz = _load_deck_content(db, content_hash)
+    return {
+        "content_hash": content_hash,
+        "flashcards": flashcards,
+        "quiz": quiz,
+        "shared_by": owner.email or owner.id,
+        "visibility": shared_deck.visibility,
+    }
 
 
 # --------------------------------------------------------------------------- feed

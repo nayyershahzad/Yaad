@@ -161,3 +161,77 @@ async def generate_cards(text: str) -> dict:
     deck, model_used = await asyncio.to_thread(_generate_sync, text)
     log.info("[cards] %s -> %d flashcards, %d quiz", model_used, len(deck.flashcards), len(deck.quiz))
     return {**deck.model_dump(), "model_used": model_used}
+
+
+# ---- chapter study notes (dossiers) ---------------------------------------
+# Reuses the exact tiered LLM path above (Groq primary, Gemini fallback) but
+# asks for free-text markdown study notes instead of a JSON deck. Called by the
+# dossiers router only when a chapter's notes are missing or regenerate is asked,
+# so the cost profile matches card-gen: generated once, cached on the Dossier.
+_NOTES_SYSTEM = (
+    "You are a study coach. Write clear, well-structured revision notes in Markdown "
+    "for a student, summarising the chapter content provided. Use headings, short "
+    "bullet points, and bold key terms. Cover the main ideas, definitions, and any "
+    "formulae or facts worth memorising, grounded ONLY in the provided text. Do not "
+    "invent material. Respond with ONLY the Markdown notes, no preamble."
+)
+_MIN_NOTES_TEXT = 40  # below this, not worth an LLM call
+_NOTES_MAX_CHARS = 24000  # cap concatenated chapter text fed to the model
+
+
+def _groq_notes(text: str) -> str:
+    from groq import Groq
+    client = Groq(api_key=os.environ["GROQ_API_KEY"])
+    try:
+        resp = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[{"role": "system", "content": _NOTES_SYSTEM},
+                      {"role": "user", "content": text}],
+            temperature=0.2,
+            max_tokens=4096,
+        )
+    except Exception as e:
+        _classify(e)
+    return (resp.choices[0].message.content or "").strip()
+
+
+def _gemini_notes(text: str) -> str:
+    import google.generativeai as genai
+    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+    model = genai.GenerativeModel(
+        model_name=GEMINI_MODEL,
+        system_instruction=_NOTES_SYSTEM,
+        generation_config={"temperature": 0.2},
+    )
+    try:
+        resp = model.generate_content(text)
+    except Exception as e:
+        _classify(e)
+    return (getattr(resp, "text", "") or "").strip()
+
+
+def _generate_notes_sync(text: str) -> tuple[str, str]:
+    """Returns (notes_md, model_used). Groq first; Gemini on rate-limit/unavailable."""
+    tiers = [("groq", _groq_notes), ("gemini", _gemini_notes)]
+    last = None
+    for name, fn in tiers:
+        try:
+            out = fn(text)
+            if out:
+                return out, name
+            last = RuntimeError(f"{name} returned empty notes")
+        except (_RateLimit, _Unavailable) as e:
+            log.warning("[notes] %s unavailable: %s -> next provider", name, e)
+            last = e
+    raise RuntimeError(f"notes generation failed on all providers: {last}")
+
+
+async def generate_notes(text: str) -> dict:
+    """Return {"notes_md": str|None, "model_used": str}. Empty (no LLM call) when
+    there's too little chapter text to be worth it."""
+    if not text or len(text.strip()) < _MIN_NOTES_TEXT:
+        log.info("[notes] text too short (%d chars) — no notes, no LLM call", len(text or ""))
+        return {"notes_md": None, "model_used": "none"}
+    notes_md, model_used = await asyncio.to_thread(_generate_notes_sync, text[:_NOTES_MAX_CHARS])
+    log.info("[notes] %s -> %d chars", model_used, len(notes_md))
+    return {"notes_md": notes_md, "model_used": model_used}
