@@ -213,7 +213,7 @@ export default function Capture({ onDeck, goUpgrade, onUnauthorized }) {
     <div>
       <div className="card">
         <h1>Scan a page</h1>
-        <p className="muted">Take a photo, pick an image, or upload a PDF (up to 5 pages). We'll turn it into flashcards and a quiz.</p>
+        <p className="muted">Take a photo, pick an image, or upload a PDF (up to 5 pages, 20 MB). We'll turn it into flashcards and a quiz.</p>
         {error && <p className="error">{error}</p>}
 
         <div className="tag-grid">
@@ -282,6 +282,7 @@ export default function Capture({ onDeck, goUpgrade, onUnauthorized }) {
         </div>
         <p className="muted" style={{ marginTop: 8 }}>
           Gallery accepts images or PDFs. PDFs file every page into the chapter above.
+          <br /><strong>PDF limit: up to 5 pages · 20 MB.</strong> Larger PDFs are declined — split them first.
         </p>
       </div>
     </div>
