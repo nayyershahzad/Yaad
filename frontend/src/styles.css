@@ -320,35 +320,78 @@ button.auto { width: auto; }
 .tag-grid > div:last-child { grid-column: 1 / -1; }
 .tag-grid input { margin-bottom: 8px; }
 
-/* ---- library / dossiers ---- */
-.subject-group { margin-bottom: 18px; }
-.subject-head {
-  font-weight: 800; font-size: 15px; color: var(--navy);
-  margin: 4px 2px 10px;
-}
-.chapter-card {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  cursor: pointer; transition: transform 0.1s, border-color 0.15s;
-}
-.chapter-card:active { transform: scale(0.99); }
-.chapter-card .chapter-title { font-weight: 700; font-size: 16px; }
-.chapter-main { flex: 1; min-width: 0; }
+/* ---- library: folder tree ---- */
 .notes-ready { color: var(--green); font-weight: 700; }
 .notes-pending { color: var(--muted); font-weight: 600; }
-.pages-row { cursor: pointer; }
 
-/* ---- loose (untagged) pages ---- */
-.loose-row {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+.folder {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+.folder-head {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; text-align: left;
+  background: none; border: none; cursor: pointer;
+  padding: 14px 16px;
+  font: inherit;
+}
+.folder-head:active { background: #f7f9fd; }
+.folder-chevron {
+  color: var(--muted); font-size: 12px;
+  transition: transform 0.18s ease;
+  flex-shrink: 0; width: 12px; text-align: center;
+}
+.folder-chevron.open { transform: rotate(90deg); }
+.folder-icon { font-size: 18px; flex-shrink: 0; }
+.folder-name {
+  font-weight: 800; font-size: 16px; color: var(--navy);
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.folder-count { font-size: 13px; color: var(--muted); flex-shrink: 0; }
+.folder-body { padding: 0 8px 6px; }
+.folder-hint {
+  font-size: 12px; color: var(--muted);
+  margin: 2px 12px 8px;
+}
+
+/* a row inside a folder (chapter or unfiled page), indented under the header */
+.tree-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 12px 11px 30px;
+  border-top: 1px solid var(--border);
   flex-wrap: wrap;
 }
-.loose-main { flex: 1; min-width: 0; cursor: pointer; }
+.folder-body > .tree-row:first-of-type { border-top: none; }
+.chapter-row { cursor: pointer; transition: background 0.12s; }
+.chapter-row:active { background: #f7f9fd; }
+.tree-icon { font-size: 16px; flex-shrink: 0; }
+.tree-main { flex: 1; min-width: 0; }
+.tree-label {
+  font-weight: 700; font-size: 15px; color: var(--navy);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tree-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.notes-badge {
+  font-size: 12px; font-weight: 600; color: var(--green);
+  background: #e6f4ec; border-radius: 12px;
+  padding: 2px 9px; flex-shrink: 0;
+}
+.tree-caret { font-size: 20px; color: var(--muted); flex-shrink: 0; }
+
+/* ---- loose (untagged) pages ---- */
+.loose-tree-row .tree-main { cursor: pointer; }
 .loose-title {
   font-weight: 700; font-size: 15px; color: var(--navy);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.loose-row .meta, .loose-file .meta { font-size: 13px; color: var(--muted); }
-.hash-dim { font-family: monospace; font-size: 12px; opacity: 0.6; }
+.loose-file {
+  padding: 12px; border-top: 1px solid var(--border);
+}
+.loose-file .meta { font-size: 13px; color: var(--muted); }
 .loose-btns { display: flex; gap: 8px; flex-shrink: 0; }
 .icon-btn {
   background: #eef1f8; color: var(--navy);

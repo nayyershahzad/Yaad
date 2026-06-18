@@ -1,14 +1,17 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { getDossiers, getRevisionSuggestion, listDecks, tagDeck, deleteDeck } from "../api.js";
 
-// The Library: dossier-organized view of everything the user has scanned.
-// Subject -> Chapters, each chapter a tappable card. Pages that were scanned
-// without a subject/chapter tag don't appear in /dossiers, so we also surface
-// a "Loose pages" group from /decks so they can be filed or cleared.
+// The Library: a Notion/Drive-style folder tree of everything scanned.
+// Subjects are collapsible folders; chapters are tidy rows inside them.
+// Pages scanned without a subject/chapter tag don't appear in /dossiers, so we
+// also surface an "Unfiled" folder (from /decks) where they can be filed or removed.
 export default function Library({ onOpenChapter, onOpenPage, onUnauthorized }) {
   const [state, setState] = useState({ loading: true, subjects: [], error: "" });
   const [revision, setRevision] = useState(null);
   const [decks, setDecks] = useState([]);
+  // Per-folder open/closed state, keyed by subject name (and "__unfiled__").
+  // Absent key = default open; we only store explicit toggles.
+  const [closed, setClosed] = useState({});
 
   // Loads dossiers + decks together so a tag/delete can refresh both at once
   // (a filed page leaves the loose group and appears under its new dossier).
@@ -43,6 +46,10 @@ export default function Library({ onOpenChapter, onOpenPage, onUnauthorized }) {
     return () => { alive = false; };
   }, [refresh, onUnauthorized]);
 
+  const toggle = useCallback((key) => {
+    setClosed((c) => ({ ...c, [key]: !c[key] }));
+  }, []);
+
   if (state.loading) {
     return (
       <div className="card loading-wrap"><div className="spinner" /><p>Loading your library…</p></div>
@@ -74,52 +81,89 @@ export default function Library({ onOpenChapter, onOpenPage, onUnauthorized }) {
         </div>
       )}
 
-      {state.subjects.map((subj) => (
-        <div className="subject-group" key={subj.subject}>
-          <div className="subject-head">📚 {subj.subject}</div>
-          {subj.chapters.map((ch) => (
-            <div
-              className="card chapter-card"
-              key={ch.chapter}
-              role="button"
-              onClick={() => onOpenChapter(subj.subject, ch.chapter, false)}
+      {state.subjects.map((subj) => {
+        const isOpen = !closed[subj.subject];
+        const n = subj.chapters.length;
+        return (
+          <div className="folder" key={subj.subject}>
+            <button
+              className="folder-head"
+              aria-expanded={isOpen}
+              onClick={() => toggle(subj.subject)}
             >
-              <div className="chapter-main">
-                <div className="chapter-title">{ch.chapter}</div>
-                <div style={{ marginTop: 6 }}>
-                  <span className="pill">{ch.page_count} pages</span>
-                  <span className="pill">{ch.flashcard_count} cards</span>
-                  <span className="pill">{ch.quiz_count} quiz</span>
-                </div>
-                <div className="meta" style={{ marginTop: 6 }}>
-                  {ch.has_notes
-                    ? <span className="notes-ready">✓ Notes ready</span>
-                    : <span className="notes-pending">Notes on first open</span>}
-                  {ch.last_scanned_at ? `  ·  ${new Date(ch.last_scanned_at).toLocaleDateString()}` : ""}
-                </div>
+              <span className={`folder-chevron ${isOpen ? "open" : ""}`}>▸</span>
+              <span className="folder-icon">📚</span>
+              <span className="folder-name">{subj.subject}</span>
+              <span className="folder-count">{n} {n === 1 ? "chapter" : "chapters"}</span>
+            </button>
+
+            {isOpen && (
+              <div className="folder-body">
+                {subj.chapters.map((ch) => (
+                  <div
+                    className="tree-row chapter-row"
+                    key={ch.chapter}
+                    role="button"
+                    onClick={() => onOpenChapter(subj.subject, ch.chapter, false)}
+                  >
+                    <span className="tree-icon">📄</span>
+                    <div className="tree-main">
+                      <div className="tree-label">{ch.chapter}</div>
+                      <div className="tree-meta">{chapterMeta(ch)}</div>
+                    </div>
+                    {ch.has_notes && <span className="notes-badge">📝 Notes</span>}
+                    <span className="tree-caret">›</span>
+                  </div>
+                ))}
               </div>
-              <div style={{ fontSize: 22, color: "var(--navy)" }}>›</div>
-            </div>
-          ))}
-        </div>
-      ))}
+            )}
+          </div>
+        );
+      })}
 
       {loosePages.length > 0 && (
-        <div className="subject-group">
-          <div className="subject-head">📄 Loose pages (tap File to organize)</div>
-          {loosePages.map((d) => (
-            <LoosePage
-              key={d.content_hash}
-              deck={d}
-              onOpen={() => onOpenPage(d.content_hash)}
-              onChanged={refresh}
-              onUnauthorized={onUnauthorized}
-            />
-          ))}
+        <div className="folder">
+          <button
+            className="folder-head"
+            aria-expanded={!closed.__unfiled__}
+            onClick={() => toggle("__unfiled__")}
+          >
+            <span className={`folder-chevron ${!closed.__unfiled__ ? "open" : ""}`}>▸</span>
+            <span className="folder-icon">📂</span>
+            <span className="folder-name">Unfiled</span>
+            <span className="folder-count">
+              {loosePages.length} {loosePages.length === 1 ? "page" : "pages"}
+            </span>
+          </button>
+
+          {!closed.__unfiled__ && (
+            <div className="folder-body">
+              <p className="folder-hint">Tap 📁 to file a page into a chapter.</p>
+              {loosePages.map((d) => (
+                <LoosePage
+                  key={d.content_hash}
+                  deck={d}
+                  onOpen={() => onOpenPage(d.content_hash)}
+                  onChanged={refresh}
+                  onUnauthorized={onUnauthorized}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
   );
+}
+
+// Builds the single quiet meta line for a chapter: "1 page · 8 cards · 5 quiz".
+function chapterMeta(ch) {
+  const parts = [
+    `${ch.page_count} ${ch.page_count === 1 ? "page" : "pages"}`,
+    `${ch.flashcard_count} cards`,
+    `${ch.quiz_count} quiz`,
+  ];
+  return parts.join(" · ");
 }
 
 // A single untagged page: opens on tap, with File-into-chapter + Remove actions.
@@ -166,10 +210,11 @@ function LoosePage({ deck, onOpen, onChanged, onUnauthorized }) {
   }
 
   const date = deck.scanned_at ? new Date(deck.scanned_at).toLocaleDateString() : "—";
+  const meta = `${deck.flashcards} cards · ${deck.quiz} quiz · ${date}`;
 
   if (mode === "file") {
     return (
-      <div className="card loose-file">
+      <div className="loose-file">
         <div className="loose-title">{deck.title}</div>
         <form onSubmit={fileIt}>
           <div className="tag-grid">
@@ -200,18 +245,11 @@ function LoosePage({ deck, onOpen, onChanged, onUnauthorized }) {
   }
 
   return (
-    <div className="card loose-row">
-      <div className="loose-main" role="button" onClick={onOpen}>
-        <div className="loose-title">{deck.title}</div>
-        <div style={{ marginTop: 6 }}>
-          <span className="pill">{deck.flashcards} cards</span>
-          <span className="pill">{deck.quiz} quiz</span>
-        </div>
-        <div className="meta" style={{ marginTop: 6 }}>
-          {date}
-          {"  ·  "}
-          <span className="hash-dim">{deck.content_hash.slice(0, 8)}</span>
-        </div>
+    <div className="tree-row loose-tree-row">
+      <span className="tree-icon">📄</span>
+      <div className="tree-main" role="button" onClick={onOpen}>
+        <div className="tree-label">{deck.title}</div>
+        <div className="tree-meta">{meta}</div>
       </div>
       <div className="loose-btns">
         <button className="icon-btn" title="File into chapter" disabled={busy} onClick={() => setMode("file")}>📁</button>
