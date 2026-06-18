@@ -1,0 +1,93 @@
+import React, { useState } from "react";
+
+// Renders the deck shape returned by /capture and /decks/{hash}:
+//   flashcards: [{ front, back }]
+//   quiz:       [{ question, options[4], answer_index, explanation }]
+export default function Deck({ flashcards = [], quiz = [] }) {
+  const [mode, setMode] = useState("cards"); // cards | quiz
+
+  return (
+    <div>
+      <div className="seg">
+        <button className={mode === "cards" ? "active" : ""} onClick={() => setMode("cards")}>
+          Flashcards ({flashcards.length})
+        </button>
+        <button className={mode === "quiz" ? "active" : ""} onClick={() => setMode("quiz")}>
+          Quiz ({quiz.length})
+        </button>
+      </div>
+      {mode === "cards" ? <Flashcards cards={flashcards} /> : <Quiz items={quiz} />}
+    </div>
+  );
+}
+
+function Flashcards({ cards }) {
+  const [i, setI] = useState(0);
+  const [flipped, setFlipped] = useState(false);
+
+  if (!cards.length) {
+    return <div className="card center"><p className="muted">No flashcards on this page.</p></div>;
+  }
+
+  const card = cards[i];
+  function go(delta) {
+    setFlipped(false);
+    setI((prev) => (prev + delta + cards.length) % cards.length);
+  }
+
+  return (
+    <div className="card">
+      <div className="flashcard-wrap">
+        <div className="flashcard" onClick={() => setFlipped((f) => !f)}>
+          <span className="side-label">{flipped ? "Back" : "Front — tap to flip"}</span>
+          <div>{flipped ? card.back : card.front}</div>
+        </div>
+      </div>
+      <div className="card-nav">
+        <button className="btn-ghost" onClick={() => go(-1)}>‹ Prev</button>
+        <span className="count">{i + 1} / {cards.length}</span>
+        <button className="btn-ghost" onClick={() => go(1)}>Next ›</button>
+      </div>
+    </div>
+  );
+}
+
+function Quiz({ items }) {
+  const [answers, setAnswers] = useState({}); // index -> chosen option index
+
+  if (!items.length) {
+    return <div className="card center"><p className="muted">No quiz on this page.</p></div>;
+  }
+
+  function choose(qi, oi) {
+    if (answers[qi] !== undefined) return; // lock after first answer
+    setAnswers((a) => ({ ...a, [qi]: oi }));
+  }
+
+  return (
+    <div>
+      {items.map((q, qi) => {
+        const chosen = answers[qi];
+        const answered = chosen !== undefined;
+        return (
+          <div className="card" key={qi}>
+            <div className="quiz-q">{qi + 1}. {q.question}</div>
+            {q.options.map((opt, oi) => {
+              let cls = "opt";
+              if (answered) {
+                if (oi === q.answer_index) cls += " correct";
+                else if (oi === chosen) cls += " wrong";
+              }
+              return (
+                <button key={oi} className={cls} disabled={answered} onClick={() => choose(qi, oi)}>
+                  {String.fromCharCode(65 + oi)}. {opt}
+                </button>
+              );
+            })}
+            {answered && q.explanation && <div className="explanation">{q.explanation}</div>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}

@@ -13,14 +13,18 @@ import os
 import json
 import time
 import hashlib
+import logging
 import datetime as dt
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy import String, Integer, DateTime, Text, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, Session
 
 import paypro
 import ratelimit
+
+log = logging.getLogger("yaad.billing")
 
 FREE_SHEETS      = int(os.getenv("FREE_SHEETS", "10"))
 PLAN_PRICE_PKR   = int(os.getenv("PLAN_PRICE_PKR", "200"))
@@ -306,6 +310,64 @@ async def paypro_ipn(request: Request, db: Session = Depends(get_db)) -> dict:
         db.commit()
 
     return {"received": True, "order_number": order_number, "status": order.status}
+
+
+@router.get("/paypro/return")
+async def paypro_return(request: Request, db: Session = Depends(get_db)) -> RedirectResponse:
+    """Browser-redirect return handler (PayPro merchant-portal "Return URL").
+
+    PayPro PK has no signed webhook; after the customer pays, their browser is
+    redirected here via GET. The exact callback query-param names are not yet
+    confirmed against a real payment, so we log the full raw query string and try
+    the common order-id keys. We never trust the callback: we re-query PayPro's
+    authoritative status and reuse the SAME shared activation path as the POST IPN
+    and the reconcile timer (activate_subscription_for_paid_order). On any doubt we
+    redirect to a pending/error page rather than false-activate.
+
+    Redirect targets (SPA result page):
+      /?billing=success  confirmed paid + subscription activated/already-active
+      /?billing=pending  order found but not yet confirmed paid (or ggosboi error)
+      /?billing=error    missing order id / unknown order / lookup failure
+    """
+    params = dict(request.query_params)
+    log.info("[billing.return] raw query: %s", str(request.url.query))
+
+    order_number = None
+    for key in ("Order_Id", "OrderNumber", "orderId", "order_id", "OrderID"):
+        if params.get(key):
+            order_number = params[key]
+            break
+
+    if not order_number:
+        log.warning("[billing.return] no order id in callback params: %s", list(params.keys()))
+        return RedirectResponse(url="/?billing=error", status_code=303)
+
+    order = db.execute(
+        select(PaymentOrder).where(PaymentOrder.order_number == str(order_number))
+    ).scalar_one_or_none()
+    if order is None:
+        log.warning("[billing.return] unknown order: %s", order_number)
+        return RedirectResponse(url="/?billing=error", status_code=303)
+
+    # Don't trust the browser callback. Re-query PayPro for the authoritative
+    # status and confirm the amount matches before granting anything. A ggosboi
+    # error (common for not-yet-settled orders) means "not confirmed" -> pending,
+    # never a false activation — exactly like the IPN route and reconcile.
+    paid = False
+    try:
+        verified = await paypro.query_status(str(order_number))
+        paid = verified["paid"]
+        if verified.get("amount") is not None and verified["amount"] != order.amount:
+            paid = False  # amount tampering / mismatch
+    except Exception as e:
+        log.info("[billing.return] %s unverifiable (%s)", order_number, str(e)[:80])
+        return RedirectResponse(url="/?billing=pending", status_code=303)
+
+    if paid:
+        activate_subscription_for_paid_order(db, order)  # idempotent shared activation path
+        return RedirectResponse(url="/?billing=success", status_code=303)
+
+    return RedirectResponse(url="/?billing=pending", status_code=303)
 
 
 def activate_subscription_for_paid_order(db: Session, order: "PaymentOrder") -> bool:
