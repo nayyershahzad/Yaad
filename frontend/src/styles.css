@@ -45,8 +45,7 @@ body {
   align-items: center;
   justify-content: space-between;
 }
-.topbar .brand { font-weight: 700; font-size: 18px; letter-spacing: 0.5px; display: inline-flex; align-items: center; gap: 7px; }
-.brand-logo { height: 26px; width: 26px; border-radius: 6px; display: block; }
+.topbar .brand { font-weight: 700; font-size: 18px; letter-spacing: 0.5px; }
 .topbar .right { display: flex; gap: 8px; align-items: center; }
 .topbar button { background: rgba(255,255,255,0.16); color: #fff; }
 

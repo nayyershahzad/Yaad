@@ -117,7 +117,7 @@ export default function App() {
     return (
       <div className="app">
         <div className="topbar">
-          <span className="brand"><img className="brand-logo" src="/yaad-logo.png" alt="" /> Yaad</span>
+          <span className="brand">Yaad</span>
           <div className="right">
             <button className="btn-ghost" onClick={() => setShowLogin(false)}>Back</button>
           </div>
@@ -175,7 +175,7 @@ export default function App() {
   return (
     <div className="app">
       <div className="topbar">
-        <span className="brand"><img className="brand-logo" src="/yaad-logo.png" alt="" /> Yaad</span>
+        <span className="brand">Yaad</span>
         <div className="right">
           <button className="btn-ghost" onClick={logout}>Sign out</button>
         </div>
